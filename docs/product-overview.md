@@ -3,7 +3,7 @@
 ## What uspec is
 
 uspec is a specification method for building products with AI agents, plus the tooling that supports it.
-The idea is to describe a product as a **tree of specs at different levels of abstraction**, keep that spec as the **source of truth**, and have **narrowly focused agents** write and maintain each part of it. Code is generated from the spec, never the other way round.
+The idea is to describe a product as a **tree of specs at different levels of abstraction**, keep that spec as the **source of truth**, and have **narrowly focused agents** write and maintain each part of it. Code is generated from the spec, never the other way round. The one exception is [onboarding an existing codebase](#onboarding-large-codebases), where the first spec tree is built from code; after that, the spec leads.
 
 The first release is a set of **skills for Claude Code and Codex** plus a **CLI** (similar in spirit to OpenSpec) that scaffolds, validates and navigates the spec.
 
@@ -26,44 +26,44 @@ Every node has a **type**, and each type has its own level of abstraction. The p
 
 | Node type | Answers | Documents it might contain |
 |---|---|---|
-| High level | What is the product and how is it built, at a glance? | Product overview, high-level architecture |
-| Mid level | How does this domain work? | Domain description, tech details, design overview of pages |
-| Low level | What exactly do we build? | API specs, database schema, detailed logic, concrete component designs |
+| Product | What is the product and how is it built, at a glance? | Product overview, high-level architecture |
+| Domain | How does this domain work? | Domain description, tech details, design overview of pages |
+| Feature | What exactly do we build? | API specs, database schema, detailed logic, concrete component designs |
 
 With these allowed parent → child links:
 
 ```
 ╭────────────────────╮
-│  High level        │◀─╮
-│  overview          ├──╯  High → High
+│  Product           │◀─╮
+│  overview          ├──╯  Product → Product
 ╰─────────┬──────────╯
           │
-          │  High → Mid
+          │  Product → Domain
           ▼
 ╭────────────────────╮
-│  Mid level         │◀─╮
-│  domains           ├──╯  Mid → Mid
+│  Domain            │◀─╮
+│  how it works      ├──╯  Domain → Domain
 ╰─────────┬──────────╯
           │
-          │  Mid → Low
+          │  Domain → Feature
           ▼
 ╭────────────────────╮
-│  Low level         │
+│  Feature           │
 │  implementable     │     leaf
 ╰────────────────────╯
 ```
 
-So a High level node can be split into smaller High level nodes, a Mid level node can be split into smaller Mid level nodes, but a Mid level node can never have a High level child. Detail only goes down, never up.
+So a Product node can be split into smaller Product nodes, a Domain node can be split into smaller Domain nodes, but a Domain node can never have a Product child, and a Product node can never have a Feature child directly. Detail only goes down, never up, and never skips a level.
 
-A node is **one entity in the tree, not one file**. A Mid level node for "checkout" can hold several documents — the domain description, the tech details and the page design overview — that all describe the same thing from different angles.
+A node is **one entity in the tree, not one file**. A Domain node for "checkout" can hold several documents — the domain description, the tech details and the page design overview — that all describe the same thing from different angles.
 
 The types above are **only an example**. uspec does not fix the number of types, their names, or the documents they contain:
 
 - A project can have 2 node types, 7, or any other number, with its own rules for allowed children.
-- **Branches can have different depths.** A simple area (e.g. "settings page") may go straight from High to Low level, while a large domain (e.g. "billing") may need several Mid level nodes in a row.
-- The goal for every leaf: **it should be implementable** — detailed enough that an agent can write the code without asking questions. This is not a hard rule, but a review skill can check that nodes and documents are in the right format.
+- **Branches can have different depths.** A simple area (e.g. "settings") may need a single Domain node with a few Features under it, while a large domain (e.g. "billing") may need several Domain nodes in a row.
+- **Every leaf must be implementable** — detailed enough that an agent can write the code without asking questions. A leaf that isn't implementable is incomplete and must be refined further. A review skill checks this.
 
-An agent working on one node reads that node and its ancestors for context. It does not need the whole tree.
+An agent working on one node reads that node and its ancestors for context. It may also read nodes from other branches when it needs them (e.g. a checkout Feature reading the billing API). It does not need the whole tree.
 
 ### 2. Narrow-focus agents
 
@@ -84,7 +84,7 @@ Narrow scope keeps context small, makes output predictable and makes responsibil
 The spec is the **source of truth**. The workflow is always:
 
 1. **Change the spec first.** A change starts at the highest node it affects and moves down the tree.
-2. **Keep the tree consistent.** Children must not contradict their parents. If a change in a leaf needs a higher-level decision, that decision goes up to the parent first.
+2. **Keep the tree consistent.** Children must not contradict their parents. If a child contradicts its parent, either fix the child, or update the parent first and then bring the child in line.
 3. **Then change the code.** Code is generated or updated from implementable (leaf) specs.
 4. **Verify.** Code is checked against the spec it came from.
 
@@ -98,7 +98,7 @@ If code and spec disagree, the spec is right and the code is a bug — or the sp
 | **Node** | One entity in the tree (a product, a domain, a feature, ...). It has a type and a parent (except the root), and contains one or more documents. |
 | **Node type** | A level of abstraction defined by the project. It sets which documents a node contains and which types its children may have. |
 | **Document** | One file inside a node that describes it from one angle (domain logic, tech details, design, ...). |
-| **Leaf / implementable node** | A node detailed enough to write code from without questions. |
+| **Leaf** | A node with no children. Every leaf must be implementable: detailed enough to write code from without questions. |
 | **Role (agent)** | A narrowly focused agent with a single responsibility. |
 | **Change** | An edit to the spec tree that moves top-down and then drives code changes. |
 | **Code path** | The path to the code a node describes, written in that node's spec. |
@@ -122,7 +122,7 @@ uspec keeps its configuration in a `.uspec` directory at the root of the reposit
 .uspec/
 ├─ config.yaml     project configuration
 ├─ roles/          role (agent) definitions
-└─ nodes/          node type definitions: their documents and allowed children
+└─ node-types/     node type definitions: their documents and allowed children
 ```
 
 The spec tree lives in `docs/` by default. The location can be changed in `config.yaml`.
@@ -143,7 +143,7 @@ This is a separate process from day-to-day work with the spec.
 
 ## Success criteria
 
-- An agent can implement a leaf node using only that node and its ancestors, without asking clarifying questions.
-- A product change can be traced from the top of the tree down to the code it touched.
+- An agent can implement a leaf node using only the spec tree, without asking clarifying questions.
+- A change to a node is carried down through all affected descendants, to the leaves and the code.
 - Adding a new domain, node type or role needs no change to uspec itself — only to the project's spec.
 - Spec and code stay in sync over time: drift is detected, not discovered by accident.
