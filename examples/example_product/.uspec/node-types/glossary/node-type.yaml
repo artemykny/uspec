@@ -1,0 +1,6 @@
+name: Glossary
+description: Shared product vocabulary.
+documents:
+  - terms
+instructions: |
+  The Glossary defines words the whole spec uses: order, basket, payout, courier shift.

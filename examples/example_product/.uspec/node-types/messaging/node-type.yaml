@@ -1,0 +1,8 @@
+name: Messaging
+description: Email, SMS and push templates.
+code: true
+derives_from: [feature]
+documents:
+  - templates
+instructions: |
+  Messaging holds every message the product sends outside the apps.

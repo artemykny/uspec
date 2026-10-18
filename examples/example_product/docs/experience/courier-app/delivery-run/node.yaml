@@ -1,0 +1,7 @@
+type: screen
+derives_from:
+  - product/delivery/live-tracking
+  - system/services/dispatch
+  - experience/design-system
+code:
+  - apps/courier-mobile/src/screens/delivery-run/

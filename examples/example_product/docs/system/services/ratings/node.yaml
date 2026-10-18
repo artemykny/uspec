@@ -1,0 +1,8 @@
+type: service
+derives_from:
+  - product/discovery/restaurant-page
+  - product/account/ratings
+  - system/domain-model
+  - system/architecture
+code:
+  - services/ratings/

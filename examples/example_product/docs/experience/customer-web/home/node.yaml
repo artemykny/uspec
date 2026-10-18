@@ -1,0 +1,8 @@
+type: screen
+derives_from:
+  - product/discovery/browse
+  - product/discovery/restaurant-page
+  - system/services/customer-bff   # API-first: built against the BFF schema
+  - experience/design-system
+code:
+  - apps/customer-web/src/screens/home/

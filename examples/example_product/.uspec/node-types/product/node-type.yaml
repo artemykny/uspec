@@ -1,0 +1,8 @@
+name: Product
+description: What and why, split by user problem.
+children: [product-area, glossary]
+documents:
+  - overview
+instructions: |
+  The product branch describes user problems. It never names services,
+  apps, screens or code.

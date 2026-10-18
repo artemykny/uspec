@@ -1,0 +1,8 @@
+name: Product spec
+description: Top of the spec tree.
+children: [product, experience, system]
+documents:
+  - overview
+instructions: |
+  The root splits the spec into three branches, each cut along its own
+  boundaries: product by user problem, experience by surface, system by service.

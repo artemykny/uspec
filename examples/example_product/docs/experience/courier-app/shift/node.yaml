@@ -1,0 +1,8 @@
+type: screen
+derives_from:
+  - product/delivery/courier-assignment
+  - product/account/sign-in
+  - system/services/dispatch
+  - experience/design-system
+code:
+  - apps/courier-mobile/src/screens/shift/

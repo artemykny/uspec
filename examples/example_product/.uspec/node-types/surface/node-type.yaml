@@ -1,0 +1,10 @@
+name: Surface
+description: One client app.
+code: true
+children: [screen]
+derives_from: [design-system, architecture]
+documents:
+  - shell
+instructions: |
+  A Surface is one client app. It owns navigation, session and offline
+  behaviour. Its code paths cover the shell only.

@@ -1,0 +1,7 @@
+type: screen
+derives_from:
+  - product/account/sign-in
+  - system/services/identity
+  - experience/design-system
+code:
+  - apps/ops-console/src/screens/sign-in/

@@ -1,0 +1,12 @@
+type: service
+derives_from:
+  - product/ordering/scheduled-orders
+  - product/partner/menu-management
+  - product/partner/order-acceptance
+  - product/partner/payouts
+  - product/account/sign-in
+  - product/account/ratings
+  - system/domain-model
+  - system/architecture
+code:
+  - services/partner-bff/

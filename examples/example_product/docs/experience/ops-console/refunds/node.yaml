@@ -1,0 +1,7 @@
+type: screen
+derives_from:
+  - product/support/refunds
+  - system/services/payments
+  - experience/design-system
+code:
+  - apps/ops-console/src/screens/refunds/

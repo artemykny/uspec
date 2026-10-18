@@ -1,0 +1,7 @@
+name: Services
+description: All backend services.
+children: [service]
+documents:
+  - overview
+instructions: |
+  Groups the service nodes.

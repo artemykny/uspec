@@ -1,0 +1,13 @@
+type: service
+derives_from:
+  - product/ordering/cart
+  - product/ordering/checkout
+  - product/ordering/scheduled-orders
+  - product/delivery/live-tracking
+  - product/partner/order-acceptance
+  - product/account/ratings
+  - product/support/refunds
+  - system/domain-model
+  - system/architecture
+code:
+  - services/orders/

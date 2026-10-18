@@ -1,0 +1,7 @@
+type: screen
+derives_from:
+  - product/partner/menu-management
+  - system/services/partner-bff   # API-first: built against the BFF schema
+  - experience/design-system
+code:
+  - apps/partner-dashboard/src/screens/menu-editor/

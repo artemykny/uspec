@@ -1,149 +1,104 @@
 # uspec — Product Overview
 
-## What uspec is
+uspec is a specification method for building products with AI agents, plus the tooling for it. A product is described as a **tree of spec nodes**. The spec is the **source of truth**: **narrowly focused agents** write each part of it, and code is generated from it, never the other way round. The one exception is [onboarding an existing codebase](#onboarding-existing-codebases), where the first tree is built from code.
 
-uspec is a specification method for building products with AI agents, plus the tooling that supports it.
-The idea is to describe a product as a **tree of specs at different levels of abstraction**, keep that spec as the **source of truth**, and have **narrowly focused agents** write and maintain each part of it. Code is generated from the spec, never the other way round. The one exception is [onboarding an existing codebase](#onboarding-large-codebases), where the first spec tree is built from code; after that, the spec leads.
-
-The first release is a set of **skills for Claude Code and Codex** plus a **CLI** (similar in spirit to OpenSpec) that scaffolds, validates and navigates the spec.
+The first release is a set of **skills for Claude Code and Codex** plus a **CLI** (similar in spirit to OpenSpec) that scaffolds, validates and navigates the spec. It is for developers and small teams who build mainly with AI agents and want product intent, architecture and design versioned next to the code.
 
 ## The problem
 
-Common problems when building a product with AI agents:
+- **Everything in one place.** The product lives in one file or one chat. It grows too big, details get lost, and every agent reads what it doesn't need.
+- **No spec, only code.** Agents change code directly; the reasons stay in chat history and are gone after the session.
+- **One agent does everything.** The same agent writes product docs, architecture, design, code and tests, and does each worse than a focused one would.
+- **Hidden dependencies.** A screen depends on a service's API, the service on a user story, but nothing says so. A change in one place silently breaks another.
 
-- **Everything in one place.** The whole product is described in one file or one chat. It gets too big, details get lost, and each agent reads a lot it doesn't need.
-- **No spec, only code.** Agents change code directly. Why something was built a certain way is only in chat history, and it's gone after the session.
-- **One agent does everything.** The same agent writes product docs, architecture, design, code and tests. The results are worse than when each task is done separately.
-- **Wrong level of detail.** A spec is either too vague to implement without guessing, or so detailed that it's hard to see the overall picture.
+## Spec tree
 
-## Core ideas
+A product is a **tree of nodes**, and every node has a **type**. The project defines the types and how they nest; uspec fixes no structure. For example, a food delivery product ([examples/example_product](../examples/example_product/), shortened) splits product by user problem, experience by app and system by service:
 
-### 1. Spec tree with levels of abstraction
+```
+docs/                          type
+├─ product/                    product
+│  ├─ glossary/                glossary
+│  └─ ordering/                product-area
+│     ├─ cart/                 feature
+│     └─ checkout/             feature
+├─ experience/                 experience
+│  ├─ design-system/           design-system
+│  └─ customer-app/            surface
+│     └─ cart-and-checkout/    screen
+└─ system/                     system
+   ├─ domain-model/            domain-model
+   └─ services/                services
+      ├─ customer-bff/         service
+      ├─ orders/               service
+      └─ payments/             service
+```
 
-A product is not described in one file. It is described as a **tree of nodes**, where each node refines its parent.
+The branches don't mirror each other: one feature can touch several services and appear on several screens. A small app could get by with far fewer types.
 
-Every node has a **type**, and each type has its own level of abstraction. The project defines its node types and **which types may be children of which**. An example with three types:
+### Nodes and types
 
-| Node type | Answers | Documents it might contain |
+A node is a directory with a `node.yaml` file (type, links, code paths), its **documents**, and its children as subdirectories. A node can describe one thing from several angles: a service has `api.md`, `logic.md` and `storage.md`.
+
+A **node type** says which types may be its children, which types it may link to, which documents its nodes have, and whether they describe code. A type may contain itself (an area split into smaller areas), but there are no other cycles: detail only goes down. For each document, the type has a **template**: its starting structure plus instructions for the agent that fills it. See [node-types.md](node-types.md).
+
+### Links
+
+A node often depends on nodes that aren't its parent. It records them as **links**, the list of nodes it is derived from (its **upstream**; the reverse is **downstream**):
+
+| Node | Type | Derived from |
 |---|---|---|
-| Product | What is the product and how is it built, at a glance? | Product overview, high-level architecture |
-| Domain | How does this domain work? | Domain description, tech details, design overview of pages |
-| Feature | What exactly do we build? | API specs, database schema, detailed logic, concrete component designs |
+| `system/services/payments` | service | `product/ordering/checkout`, `product/support/refunds`, `product/partner/payouts`, `system/domain-model`, … |
+| `experience/customer-app/cart-and-checkout` | screen | `product/ordering/cart`, `product/ordering/checkout`, `system/services/customer-bff`, `experience/design-system`, … |
 
-With these allowed parent → child links:
+Upstream nodes are the problem, the node is the solution: a service solves a set of features, and its API is the problem a screen solves. Links must not form cycles, and their direction is the project's choice. In the example, screens derive from services and never the reverse, so the backend doesn't depend on the frontend.
 
-```
-╭────────────────────╮
-│  Product           │◀─╮
-│  overview          ├──╯  Product → Product
-╰─────────┬──────────╯
-          │
-          │  Product → Domain
-          ▼
-╭────────────────────╮
-│  Domain            │◀─╮
-│  how it works      ├──╯  Domain → Domain
-╰─────────┬──────────╯
-          │
-          │  Domain → Feature
-          ▼
-╭────────────────────╮
-│  Feature           │
-│  implementable     │     leaf
-╰────────────────────╯
-```
+Two refinements, both declared in the node type:
 
-So a Product node can be split into smaller Product nodes, a Domain node can be split into smaller Domain nodes, but a Domain node can never have a Product child, and a Product node can never have a Feature child directly. Detail only goes down, never up, and never skips a level.
+- **Document dependencies.** Documents inside a node depend on each other: a service's `logic.md` is built from its `api.md`. This sets the order documents are written in and how a change moves inside the node.
+- **Exposed documents.** A link usually needs only part of a node: a screen needs a service's `api.md`, not its `logic.md`. Documents are exposed by default; a type can mark some internal, and linked nodes neither see them nor get their changes.
 
-A node is **one entity in the tree, not one file**. A Domain node for "checkout" can hold several documents — the domain description, the tech details and the page design overview — that all describe the same thing from different angles.
+### Context
 
-The types above are **only an example**. uspec does not fix the number of types, their names, or the documents they contain:
+An agent writing a document reads the node's ancestors, the exposed documents of its upstream nodes, and the documents in the same node that its document derives from. An agent implementing a node reads all of the node's documents plus the same ancestors and upstream documents.
 
-- A project can have 2 node types, 7, or any other number, with its own rules for allowed children.
-- **Branches can have different depths.** A simple area (e.g. "settings") may need a single Domain node with a few Features under it, while a large domain (e.g. "billing") may need several Domain nodes in a row.
-- **Every leaf must be implementable** — detailed enough that an agent can write the code without asking questions. A leaf that isn't implementable is incomplete and must be refined further. A review skill checks this.
+Siblings, other branches and downstream nodes are not given unless linked. The agent can read more, but if it keeps needing something outside its context, a link is missing.
 
-An agent working on one node reads that node and its ancestors for context. It may also read nodes from other branches when it needs them (e.g. a checkout Feature reading the billing API). It does not need the whole tree.
+### Code paths
 
-### 2. Narrow-focus agents
+Only types marked `code: true` describe code (in the example: surfaces, screens, services, the design system); each of their nodes lists its code paths, other nodes list none. The link goes one way: the spec points to the code, the code doesn't point back. **Every node with code paths must be implementable**: its context is enough to write the code without asking questions. A review skill checks this.
 
-Each agent has **one responsibility**. For example:
+## Agents
 
-- a product agent writes and maintains product descriptions,
-- an architecture agent writes architecture,
-- a design agent writes page and component designs,
-- a test agent writes test specs and tests,
-- an implementation agent turns leaf specs into code.
+Each agent run has **one responsibility**: one document of one node (`user-story.md` for checkout, `api.md` for payments), or the code of one node. There are no separately defined agents: the document's template and the type's instructions tell the agent what to write. Narrow scope keeps context small, output predictable and responsibility clear.
 
-These roles are **only examples**. A real project defines its own roles; they can look completely different (a compliance reviewer, a data-model owner, a copywriter, ...).
+## Workflow
 
-Narrow scope keeps context small, makes output predictable and makes responsibility clear.
+1. **Change the spec first.** A change starts at the highest node it affects and moves down the tree and along links.
+2. **Keep the spec consistent.** A node must not contradict its ancestors or upstream nodes; fix the node, or change the upstream first and bring the node in line.
+3. **Then change the code** of the nodes that list it.
+4. **Verify** the code against the spec it came from.
 
-### 3. Spec-driven code generation
+If code and spec disagree, the code is a bug, unless the spec is changed explicitly first. There is no proposal / apply / archive flow: changes are made directly in the tree.
 
-The spec is the **source of truth**. The workflow is always:
-
-1. **Change the spec first.** A change starts at the highest node it affects and moves down the tree.
-2. **Keep the tree consistent.** Children must not contradict their parents. If a child contradicts its parent, either fix the child, or update the parent first and then bring the child in line.
-3. **Then change the code.** Code is generated or updated from implementable (leaf) specs.
-4. **Verify.** Code is checked against the spec it came from.
-
-If code and spec disagree, the spec is right and the code is a bug — or the spec has to be changed explicitly first.
-
-## Key concepts
-
-| Concept | Meaning |
-|---|---|
-| **Spec tree** | The full set of spec nodes for a product, organised as a tree of refinements. |
-| **Node** | One entity in the tree (a product, a domain, a feature, ...). It has a type and a parent (except the root), and contains one or more documents. |
-| **Node type** | A level of abstraction defined by the project. It sets which documents a node contains and which types its children may have. |
-| **Document** | One file inside a node that describes it from one angle (domain logic, tech details, design, ...). |
-| **Leaf** | A node with no children. Every leaf must be implementable: detailed enough to write code from without questions. |
-| **Role (agent)** | A narrowly focused agent with a single responsibility. |
-| **Change** | An edit to the spec tree that moves top-down and then drives code changes. |
-| **Code path** | The path to the code a node describes, written in that node's spec. |
-
-## Who it is for
-
-- Developers and small teams building products mainly with AI coding agents.
-- People who want AI output to stay consistent across many sessions and agents.
-- Teams that want product intent, architecture and design written down and versioned next to the code.
-
-## First release scope
-
-- Skills for Claude Code and Codex
-- CLI
+> **TODO:** how a change moves through the tree in detail (document dependencies, exposed documents, stopping when nothing needs to change).
 
 ## Repository layout
-
-uspec keeps its configuration in a `.uspec` directory at the root of the repository:
 
 ```
 .uspec/
 ├─ config.yaml     project configuration
-├─ roles/          role (agent) definitions
-└─ node-types/     node type definitions: their documents and allowed children
+└─ node-types/     one directory per type: node-type.yaml + a template per document
+docs/              the spec tree (location set in config.yaml)
 ```
 
-The spec tree lives in `docs/` by default. The location can be changed in `config.yaml`.
+## Onboarding existing codebases
 
-Each spec node is a directory, and its documents are files inside it. A node's spec says which code paths it describes, so code can be found from the spec.
-
-## Changes
-
-> **TODO:** describe how a change to the spec is made and how it moves to code.
-
-There is no proposal / apply / archive flow. A change is made directly in the spec tree, and the code follows (see [Spec-driven code generation](#3-spec-driven-code-generation)).
-
-## Onboarding large codebases
-
-> **TODO:** describe how to create a spec tree for a large codebase that already exists.
-
-This is a separate process from day-to-day work with the spec.
+> **TODO:** how to build the first spec tree for a large existing codebase. This is a separate process from day-to-day work.
 
 ## Success criteria
 
-- An agent can implement a leaf node using only the spec tree, without asking clarifying questions.
-- A change to a node is carried down through all affected descendants, to the leaves and the code.
-- Adding a new domain, node type or role needs no change to uspec itself — only to the project's spec.
-- Spec and code stay in sync over time: drift is detected, not discovered by accident.
+- An agent can implement any node with code paths from its context alone, without clarifying questions.
+- A change reaches every affected node and the code.
+- Adding a domain or node type needs no change to uspec, only to the project's spec.
+- Drift between spec and code is detected, not discovered by accident.

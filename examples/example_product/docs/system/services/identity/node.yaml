@@ -1,0 +1,8 @@
+type: service
+derives_from:
+  - product/ordering/checkout
+  - product/account/sign-in
+  - system/domain-model
+  - system/architecture
+code:
+  - services/identity/

@@ -1,0 +1,8 @@
+type: screen
+derives_from:
+  - product/partner/order-acceptance
+  - product/ordering/scheduled-orders
+  - system/services/partner-bff   # API-first: built against the BFF schema
+  - experience/design-system
+code:
+  - apps/partner-dashboard/src/screens/live-orders/

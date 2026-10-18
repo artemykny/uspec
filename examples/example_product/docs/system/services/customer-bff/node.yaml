@@ -1,0 +1,17 @@
+type: service
+derives_from:
+  - product/discovery/browse
+  - product/discovery/search
+  - product/discovery/restaurant-page
+  - product/ordering/cart
+  - product/ordering/checkout
+  - product/ordering/promo-codes
+  - product/ordering/scheduled-orders
+  - product/delivery/live-tracking
+  - product/account/sign-in
+  - product/account/ratings
+  - product/support/refunds
+  - system/domain-model
+  - system/architecture
+code:
+  - services/customer-bff/

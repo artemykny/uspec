@@ -1,0 +1,9 @@
+name: Feature
+description: One user problem and the behaviour that solves it.
+derives_from: [glossary]
+documents:
+  - user-story
+  - rules
+instructions: |
+  A Feature describes one user problem in product terms. It lists no code
+  paths and names no services or apps; those link to it, not the other way round.

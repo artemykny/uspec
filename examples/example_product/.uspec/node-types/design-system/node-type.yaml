@@ -1,0 +1,9 @@
+name: Design system
+description: Shared UI foundations and components.
+code: true
+documents:
+  - foundations
+  - components
+instructions: |
+  The Design system holds UI rules every surface follows. Its code is the
+  shared UI package.

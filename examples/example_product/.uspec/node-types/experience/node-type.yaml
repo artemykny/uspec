@@ -1,0 +1,7 @@
+name: Experience
+description: What users see, split by surface.
+children: [design-system, surface, messaging]
+documents:
+  - overview
+instructions: |
+  The experience branch is split by surface (app), then by screen.

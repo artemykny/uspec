@@ -1,0 +1,10 @@
+type: messaging
+derives_from:
+  - product/ordering/promo-codes
+  - product/delivery/live-tracking
+  - product/delivery/courier-assignment
+  - product/partner/order-acceptance
+  - product/account/sign-in
+  - product/support/refunds
+code:
+  - packages/messaging/

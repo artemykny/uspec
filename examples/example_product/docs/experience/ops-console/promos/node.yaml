@@ -1,0 +1,7 @@
+type: screen
+derives_from:
+  - product/ordering/promo-codes
+  - system/services/pricing
+  - experience/design-system
+code:
+  - apps/ops-console/src/screens/promos/

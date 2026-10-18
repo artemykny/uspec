@@ -1,0 +1,5 @@
+type: surface
+derives_from:
+  - experience/design-system
+code:
+  - apps/customer-web/src/shell/

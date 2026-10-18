@@ -1,0 +1,16 @@
+name: Service
+description: One deployable backend service.
+code: true
+derives_from: [feature, domain-model, architecture]
+documents:
+  - api
+  - logic
+  - storage
+  - events
+  - compliance
+instructions: |
+  A Service is one deployable backend service, and the only owner of its
+  code. Service-wide rules (idempotency, ledgers, compliance scope) live here
+  once. A Service derives from the features it serves. It never derives from
+  the experience branch: screens are built against its API, not the other
+  way round.

@@ -1,0 +1,11 @@
+type: service
+derives_from:
+  - product/discovery/browse
+  - product/ordering/scheduled-orders
+  - product/delivery/live-tracking
+  - product/delivery/courier-assignment
+  - product/partner/order-acceptance
+  - system/domain-model
+  - system/architecture
+code:
+  - services/dispatch/

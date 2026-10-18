@@ -1,0 +1,7 @@
+type: screen
+derives_from:
+  - product/partner/order-acceptance
+  - system/services/orders
+  - experience/design-system
+code:
+  - apps/ops-console/src/screens/orders/

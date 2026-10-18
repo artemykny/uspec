@@ -1,0 +1,9 @@
+type: service
+derives_from:
+  - product/ordering/checkout
+  - product/partner/payouts
+  - product/support/refunds
+  - system/domain-model
+  - system/architecture
+code:
+  - services/payments/

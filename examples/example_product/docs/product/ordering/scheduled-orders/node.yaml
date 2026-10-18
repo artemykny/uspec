@@ -1,0 +1,3 @@
+type: feature
+derives_from:
+  - product/glossary

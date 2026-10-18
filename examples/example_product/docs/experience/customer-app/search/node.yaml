@@ -1,0 +1,7 @@
+type: screen
+derives_from:
+  - product/discovery/search
+  - system/services/customer-bff   # API-first: built against the BFF schema
+  - experience/design-system
+code:
+  - apps/customer-mobile/src/screens/search/

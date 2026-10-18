@@ -1,0 +1,7 @@
+name: System
+description: How it works, split by service.
+children: [architecture, domain-model, services, platform]
+documents:
+  - overview
+instructions: |
+  The system branch follows the real architecture: services, shared model, platform.

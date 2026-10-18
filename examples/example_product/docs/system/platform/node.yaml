@@ -1,0 +1,5 @@
+type: platform
+derives_from:
+  - system/architecture
+code:
+  - infra/

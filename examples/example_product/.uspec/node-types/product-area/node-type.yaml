@@ -1,0 +1,7 @@
+name: Product area
+description: A group of related user problems.
+children: [product-area, feature]
+documents:
+  - overview
+instructions: |
+  A Product area groups features by the user problem they solve. Areas may nest.

@@ -1,0 +1,11 @@
+name: Screen
+description: One user-facing flow inside a surface.
+code: true
+derives_from: [feature, design-system, service]
+documents:
+  - design
+  - states
+instructions: |
+  A Screen is one user-facing flow in one app. It may serve several features,
+  and one feature may appear on several screens; links show that. It is
+  built against the API of the service it calls.

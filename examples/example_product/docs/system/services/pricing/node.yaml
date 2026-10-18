@@ -1,0 +1,10 @@
+type: service
+derives_from:
+  - product/discovery/restaurant-page
+  - product/ordering/cart
+  - product/ordering/checkout
+  - product/ordering/promo-codes
+  - system/domain-model
+  - system/architecture
+code:
+  - services/pricing/

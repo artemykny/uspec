@@ -1,0 +1,8 @@
+name: Platform
+description: Infrastructure, deploys, observability.
+code: true
+derives_from: [architecture]
+documents:
+  - infra
+instructions: |
+  Platform describes where and how services run.

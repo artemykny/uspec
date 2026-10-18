@@ -1,0 +1,8 @@
+type: screen
+derives_from:
+  - product/delivery/live-tracking
+  - product/support/refunds
+  - system/services/customer-bff   # API-first: built against the BFF schema
+  - experience/design-system
+code:
+  - apps/customer-mobile/src/screens/order-tracking/

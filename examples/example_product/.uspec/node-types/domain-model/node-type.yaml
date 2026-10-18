@@ -1,0 +1,8 @@
+name: Domain model
+description: Core entities and their lifecycles.
+derives_from: [glossary]
+documents:
+  - entities
+  - lifecycle
+instructions: |
+  The Domain model defines entities and state machines shared by all services.

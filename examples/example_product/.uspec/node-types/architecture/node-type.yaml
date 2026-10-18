@@ -1,0 +1,8 @@
+name: Architecture
+description: Rules that apply across services.
+documents:
+  - context-map
+  - conventions
+  - decisions
+instructions: |
+  Architecture holds what every service must follow.

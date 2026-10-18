@@ -1,0 +1,9 @@
+type: service
+derives_from:
+  - product/discovery/browse
+  - product/discovery/search
+  - product/partner/menu-management
+  - system/domain-model
+  - system/architecture
+code:
+  - services/search/
