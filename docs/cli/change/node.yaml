@@ -1,0 +1,6 @@
+type: command
+derives_from:
+  - method/changes
+code:
+  - cli/src/change.rs
+  - cli/src/graph.rs

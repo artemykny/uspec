@@ -1,0 +1,11 @@
+name: Skill
+description: One uspec skill and the subagents it starts.
+code: true
+derives_from: [concept, command]
+documents:
+  - behaviour
+instructions: |
+  A Skill describes when it runs, what it does step by step, which CLI
+  commands it calls, which subagents it starts and what each returns. It
+  follows the method's concepts and uses commands as their usage documents
+  describe them.

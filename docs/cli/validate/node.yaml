@@ -1,0 +1,7 @@
+type: command
+derives_from:
+  - method/spec-tree
+  - method/node-types
+  - method/links
+code:
+  - cli/src/validate.rs

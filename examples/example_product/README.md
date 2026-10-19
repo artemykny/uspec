@@ -1,6 +1,6 @@
 # Example product
 
-Spec tree for **Forkly**, a food delivery marketplace, in the format from [node-types.md](../../docs/node-types.md).
+Spec tree for **Forkly**, a food delivery marketplace, in the format from [node-types](../../docs/method/node-types/rules.md).
 
 ```
 example_product/
@@ -11,7 +11,7 @@ example_product/
    └─ system/           by service         11 services, domain model, architecture, platform
 ```
 
-72 nodes in total. The tree passes every [validation check](../../docs/node-types.md#validation).
+72 nodes in total. The tree passes every [validation check](../../docs/method/node-types/rules.md).
 
 ## Filled-in documents
 

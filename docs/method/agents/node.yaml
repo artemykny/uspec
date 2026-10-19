@@ -1,0 +1,4 @@
+type: concept
+derives_from:
+  - method/context
+  - method/changes

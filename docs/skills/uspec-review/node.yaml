@@ -1,0 +1,8 @@
+type: skill
+derives_from:
+  - method/context
+  - cli/context
+  - cli/validate
+  - cli/tree
+code:
+  - skills/uspec-review/

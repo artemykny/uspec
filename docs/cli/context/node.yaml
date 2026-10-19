@@ -1,0 +1,5 @@
+type: command
+derives_from:
+  - method/context
+code:
+  - cli/src/context.rs

@@ -1,0 +1,6 @@
+type: command
+derives_from:
+  - method/spec-tree
+  - method/links
+code:
+  - cli/src/node.rs

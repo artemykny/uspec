@@ -1,0 +1,5 @@
+type: command
+derives_from:
+  - method/spec-tree
+code:
+  - cli/src/main.rs

@@ -1,0 +1,8 @@
+name: Method
+description: The specification method, independent of any tool.
+children: [concept]
+documents:
+  - overview
+instructions: |
+  The method is described without reference to the CLI or skills: a person
+  could follow it by hand. Tools implement it and link to its concepts.

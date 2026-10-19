@@ -1,0 +1,10 @@
+name: CLI
+description: The uspec command-line tool.
+code: true
+children: [command]
+derives_from: [concept]
+documents:
+  - overview
+instructions: |
+  The CLI does everything that doesn't need judgement. Its overview holds what
+  all commands share; each command's behaviour lives in its own node.

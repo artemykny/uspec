@@ -1,0 +1,10 @@
+name: Concept
+description: One concept of the method, with its rules.
+children: []
+derives_from: [concept]
+documents:
+  - rules
+instructions: |
+  A Concept defines one idea of the method precisely enough to check a spec
+  or a tool against it. It names no CLI commands, flags or skills: tools link
+  to concepts, not the other way round. It links to the concepts it builds on.

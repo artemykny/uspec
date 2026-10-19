@@ -1,0 +1,8 @@
+type: skill
+derives_from:
+  - method/changes
+  - method/agents
+  - cli/change
+  - cli/context
+code:
+  - skills/uspec-implement/

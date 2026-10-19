@@ -1,0 +1,10 @@
+name: Skills
+description: The uspec skills for Claude Code.
+code: true
+children: [skill]
+derives_from: [concept]
+documents:
+  - overview
+instructions: |
+  Skills do the work that needs judgement and call the CLI for the rest. The
+  overview holds what all skills share; each skill's steps live in its node.

@@ -1,0 +1,8 @@
+type: cli
+code:
+  - cli/Cargo.toml
+  - cli/src/main.rs
+  - cli/src/project.rs
+  - cli/src/types.rs
+  - cli/src/tree.rs
+  - cli/src/git.rs

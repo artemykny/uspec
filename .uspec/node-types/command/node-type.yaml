@@ -1,0 +1,10 @@
+name: Command
+description: One uspec CLI command or command group.
+code: true
+derives_from: [concept, command]
+documents:
+  - usage
+instructions: |
+  A Command is one top-level CLI command (with its subcommands). It implements
+  the concepts it links to and doesn't redefine them: it says how the concept
+  is applied, what the command prints and when it fails.

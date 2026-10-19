@@ -1,0 +1,12 @@
+type: skill
+derives_from:
+  - method/changes
+  - method/agents
+  - method/experiments
+  - cli/change
+  - cli/context
+  - cli/node
+  - cli/tree
+  - cli/validate
+code:
+  - skills/uspec-spec/

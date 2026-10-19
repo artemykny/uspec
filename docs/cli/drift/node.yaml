@@ -1,0 +1,5 @@
+type: command
+derives_from:
+  - method/drift
+code:
+  - cli/src/drift.rs
