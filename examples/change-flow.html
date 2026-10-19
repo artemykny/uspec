@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change Flow Walkthrough</title>
+<style>
+:root {
+  --bg: #fbfaf7; --surface: #ffffff; --surface-2: #f3f1ec;
+  --text: #1d1c1a; --muted: #6b6860; --border: #e3e0d8;
+  --accent: #b4532a; --accent-soft: #f6e4da;
+  --prod: #2f6f4f; --prod-soft: #e1efe6;
+  --exp: #6a4bb0; --exp-soft: #ebe5f7;
+  --sys: #1f5f9e; --sys-soft: #e0ebf6;
+  --root: #6b6860; --root-soft: #ecebe6;
+  --pend: #9a6a00; --pend-soft: #f6edd2;
+  --aff: #b4532a; --aff-soft: #f6e4da;
+  --upd: #1f5f9e; --upd-soft: #e0ebf6;
+  --ok: #2f6f4f; --ok-soft: #e1efe6;
+  --del: #b33a3a; --del-soft: #f7e0e0;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161513; --surface: #1e1d1a; --surface-2: #272522; --text: #ece9e2; --muted: #a29e94;
+    --border: #36332e; --accent: #e08a62; --accent-soft: #3a2a22;
+    --prod: #7cc79c; --prod-soft: #1f3328; --exp: #b39cf0; --exp-soft: #2c2540;
+    --sys: #7fb2e8; --sys-soft: #1d2b3b; --root: #a29e94; --root-soft: #2a2825;
+    --pend: #e3c157; --pend-soft: #3a3217; --aff: #e08a62; --aff-soft: #3a2a22;
+    --upd: #7fb2e8; --upd-soft: #1d2b3b; --ok: #7cc79c; --ok-soft: #1f3328;
+    --del: #ec8b8b; --del-soft: #3d2121;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161513; --surface: #1e1d1a; --surface-2: #272522; --text: #ece9e2; --muted: #a29e94;
+  --border: #36332e; --accent: #e08a62; --accent-soft: #3a2a22;
+  --prod: #7cc79c; --prod-soft: #1f3328; --exp: #b39cf0; --exp-soft: #2c2540;
+  --sys: #7fb2e8; --sys-soft: #1d2b3b; --root: #a29e94; --root-soft: #2a2825;
+  --pend: #e3c157; --pend-soft: #3a3217; --aff: #e08a62; --aff-soft: #3a2a22;
+  --upd: #7fb2e8; --upd-soft: #1d2b3b; --ok: #7cc79c; --ok-soft: #1f3328;
+  --del: #ec8b8b; --del-soft: #3d2121;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 40px 16px 96px; }
+h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.01em; }
+h2 { font-size: 1.25rem; margin: 0 0 6px; }
+h3 { font-size: 0.78rem; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+p { margin: 0 0 10px; max-width: 80ch; }
+.lede { color: var(--muted); font-size: 1.05rem; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+
+/* stepper */
+.stepper { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 14px 0 12px; margin: 18px 0 16px; border-bottom: 1px solid var(--border); }
+.ctrl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ctrl button { font: inherit; font-size: 0.9rem; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 6px 14px; cursor: pointer; }
+.ctrl button:disabled { opacity: 0.4; cursor: default; }
+.ctrl button.primary { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
+.ctrl button:focus-visible, .dots button:focus-visible, .doc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctrl .count { color: var(--muted); font-size: 0.88rem; margin-left: auto; }
+.dots { display: flex; gap: 4px; margin-top: 10px; flex-wrap: wrap; }
+.dots button { flex: 1 1 0; min-width: 18px; height: 6px; border-radius: 3px; border: none; padding: 0; cursor: pointer; background: var(--border); }
+.dots button.done { background: var(--muted); }
+.dots button.cur { background: var(--accent); }
+.dots button.impl.done { background: var(--sys); }
+.phases { display: flex; gap: 14px; font-size: 0.78rem; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+.phases span b { color: var(--text); }
+
+.layout { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 940px) { .layout { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.left { position: sticky; top: 112px; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 940px) { .left { position: static; } }
+.right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* tree */
+.tree { display: flex; flex-direction: column; gap: 3px; }
+.node { margin-left: calc(var(--d) * 16px); border-left: 3px solid var(--k); padding: 3px 0 4px 8px; border-radius: 2px; }
+.node .nm { font-weight: 600; font-size: 0.86rem; }
+.node .ty { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-left: 4px; }
+.node .code { font-family: var(--mono); font-size: 10.5px; color: var(--sys); margin-left: 4px; }
+.node .lk { font-family: var(--mono); font-size: 10.5px; color: var(--muted); display: block; }
+.node .impl { font-size: 10.5px; font-weight: 600; margin-left: 6px; padding: 0 5px; border-radius: 4px; }
+.docs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.doc { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--muted); border: 1.5px solid transparent; cursor: pointer; line-height: 1.5; }
+.doc.read { border-color: var(--text); border-style: dashed; color: var(--text); }
+.doc.write { border-color: var(--accent); border-style: solid; box-shadow: 0 0 0 2px var(--accent-soft); color: var(--text); }
+.doc.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+.s-pending { background: var(--pend-soft) !important; color: var(--pend) !important; }
+.s-blocked { background: var(--pend-soft) !important; color: var(--pend) !important; opacity: 0.6; }
+.s-affected { background: var(--aff-soft) !important; color: var(--aff) !important; }
+.s-updated { background: var(--upd-soft) !important; color: var(--upd) !important; font-weight: 600; }
+.s-no-change { background: var(--ok-soft) !important; color: var(--ok) !important; text-decoration: line-through; text-decoration-thickness: 1px; }
+.s-done { background: var(--ok-soft); color: var(--ok); }
+.k-prod { --k: var(--prod); } .k-exp { --k: var(--exp); } .k-sys { --k: var(--sys); } .k-root { --k: var(--root); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 0.78rem; color: var(--muted); }
+.legend .doc { cursor: default; }
+
+.detail { font-size: 0.86rem; }
+.detail .p { font-family: var(--mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+.detail ul { margin: 6px 0 0; padding-left: 18px; }
+.detail .none { color: var(--muted); }
+
+/* step content */
+.mode { display: inline-block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; margin-bottom: 8px; }
+.mode.spec { background: var(--accent-soft); color: var(--accent); }
+.mode.impl { background: var(--sys-soft); color: var(--sys); }
+.mode.cli { background: var(--surface-2); color: var(--muted); }
+.term { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 10px; }
+.term:last-child { margin-bottom: 0; }
+.term .c { color: var(--text); font-weight: 600; }
+.term .c::before { content: "$ "; color: var(--muted); }
+.term .o { color: var(--muted); }
+.term .add { color: var(--ok); } .term .rem { color: var(--del); }
+.agent { border-left: 3px solid var(--accent); }
+.agent.impl { border-left-color: var(--sys); }
+.agent .who { font-weight: 600; margin-bottom: 4px; }
+.agent .who small { font-weight: 400; color: var(--muted); }
+.reads { margin: 6px 0 12px; padding: 0; list-style: none; font-family: var(--mono); font-size: 12px; }
+.reads li { padding: 2px 0; overflow-wrap: anywhere; }
+.reads li span { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+.decisions { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.decisions td { border-top: 1px solid var(--border); padding: 6px 8px 6px 0; vertical-align: top; }
+.decisions td:first-child { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.decisions td:nth-child(2) { white-space: nowrap; }
+@media (max-width: 600px) { .decisions td:first-child { white-space: normal; overflow-wrap: anywhere; } }
+.tag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+.note { font-size: 0.86rem; color: var(--muted); border-left: 3px solid var(--border); padding-left: 10px; margin: 10px 0 0; }
+.runs { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 0.86rem; color: var(--muted); }
+.runs b { color: var(--text); font-size: 1.05rem; margin-right: 3px; }
+pre.yaml { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.yaml .k { color: var(--muted); }
+pre.yaml .new { background: var(--accent-soft); border-radius: 3px; }
+pre.yaml .cm { color: var(--muted); font-style: italic; }
+.chat { display: flex; flex-direction: column; gap: 8px; }
+.msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; line-height: 1.45; }
+.msg .from { display: block; font-size: 0.72rem; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+.msg.user { align-self: flex-end; background: var(--accent-soft); border-bottom-right-radius: 4px; }
+.msg.agent { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; }
+.empty { color: var(--muted); font-style: italic; font-size: 0.86rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>A change, step by step</h1>
+  <p class="lede">The refund window goes from 14 to 30 days. Follow it from one edited document through propagation, batched triage, writers and implementation to close. The tree on the left shows each document's state and what the current agent reads (dashed) or writes (solid).</p>
+
+  <div class="stepper">
+    <div class="ctrl">
+      <button id="prev" aria-label="Previous step">← Back</button>
+      <button id="next" class="primary" aria-label="Next step">Next →</button>
+      <button id="reset">Restart</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="dots" id="dots" role="tablist" aria-label="Steps"></div>
+  </div>
+
+  <div class="layout">
+    <div class="left">
+      <section class="card">
+        <h3>Tree <span style="text-transform:none;letter-spacing:0;font-weight:400">· paths relative to docs/</span></h3>
+        <div class="tree" id="tree"></div>
+      </section>
+      <section class="card">
+        <div class="legend">
+          <span><span class="doc s-pending">pending</span></span>
+          <span><span class="doc s-blocked">blocked</span></span>
+          <span><span class="doc s-affected">affected</span></span>
+          <span><span class="doc s-updated">updated</span></span>
+          <span><span class="doc s-no-change">no-change</span></span>
+          <span><span class="doc read">reads</span></span>
+          <span><span class="doc write">writes</span></span>
+        </div>
+      </section>
+      <section class="card detail" id="detail" aria-live="polite">
+        <h3>Selected document</h3>
+        <p class="none">Click a document in the tree to see why it's in the change.</p>
+      </section>
+    </div>
+
+    <div class="right">
+      <section class="card" id="chat"></section>
+      <section class="card" id="step"></section>
+      <section class="card" id="agents"></section>
+      <section class="card">
+        <h3>Agent runs so far</h3>
+        <div class="runs" id="runs"></div>
+        <p class="note" id="compare"></p>
+      </section>
+      <section class="card">
+        <h3>.uspec/changes/refund-window/status.yaml</h3>
+        <div id="status"></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+// ---------- tree ----------
+const NODES = [
+  { p: 'product', t: 'product', k: 'prod', d: 0, docs: ['overview'] },
+  { p: 'product/support', t: 'product-area', k: 'prod', d: 1, docs: ['overview'] },
+  { p: 'product/support/refunds', t: 'feature', k: 'prod', d: 2, docs: ['user-story', 'rules'] },
+  { p: 'system', t: 'system', k: 'sys', d: 0, docs: ['overview'] },
+  { p: 'system/services', t: 'services', k: 'sys', d: 1, docs: ['overview'] },
+  { p: 'system/services/payments', t: 'service', k: 'sys', d: 2, docs: ['api', 'logic', 'storage'],
+    code: 'services/payments/', links: ['product/support/refunds'] },
+  { p: 'experience', t: 'experience', k: 'exp', d: 0, docs: ['overview'] },
+  { p: 'experience/ops-console', t: 'surface', k: 'exp', d: 1, docs: ['shell'], code: 'apps/ops-console/src/shell/' },
+  { p: 'experience/ops-console/refunds', t: 'screen', k: 'exp', d: 2, docs: ['design', 'states'],
+    code: 'apps/ops-console/src/refunds/', links: ['product/support/refunds', 'system/services/payments'] },
+  { p: 'experience/customer-app', t: 'surface', k: 'exp', d: 1, docs: ['shell'], code: 'apps/customer-app/src/shell/' },
+  { p: 'experience/customer-app/order-help', t: 'screen', k: 'exp', d: 2, docs: ['design', 'states'],
+    code: 'apps/customer-app/src/order-help/', links: ['product/support/refunds', 'system/services/payments'] },
+];
+const short = p => p.replace('experience/', 'exp/').replace('system/services/', 'svc/').replace('product/support/', 'support/');
+
+const PAY = 'system/services/payments';
+const OPS = 'experience/ops-console/refunds';
+const HELP = 'experience/customer-app/order-help';
+const RULES = 'product/support/refunds/rules.md';
+
+
+const RULES_DIFF = `<span class="o"> ## Eligibility</span>
+<span class="rem">-- A customer can request a refund within 14 days of delivery.</span>
+<span class="add">+- A customer can request a refund within 30 days of delivery.</span>`;
+
+// ---------- steps ----------
+// docs: cumulative patches {path: [state, why]}; impl: cumulative {node: state}
+// blocked: candidates not ready yet (per step); read / write: highlight (per step)
+// cmds run before the agents, cmds2 after them
+const CH = 'refund-window';
+const CANDIDATE = 'Candidate: links to product/support/refunds, and rules.md is exposed.';
+const SCREEN_CANDIDATE = CANDIDATE + ' Blocked until payments settles: the screen also links to it.';
+const SCREENS_BLOCKED = [OPS + '/design.md', OPS + '/states.md', HELP + '/design.md', HELP + '/states.md'];
+
+const STEPS = [
+  {
+    title: 'Before the change', mode: 'cli',
+    text: `<p>The tree as it is. <code>product/support/refunds</code> is a Feature. The <code>payments</code> service and two screens link to it; both screens also link to <code>payments</code>, because they call its API.</p>
+           <p>A service's <code>logic.md</code> and <code>storage.md</code> are internal (<code>exposed: false</code>): linked nodes don't read them and don't get their changes.</p>`,
+  },
+  {
+    chat: [["user", "/uspec-spec Customers should be able to request a refund up to 30 days after delivery, not 14."], ["agent", "No change is open, so I’m starting one. Using change: <code>refund-window</code>."]],
+    title: 'Open the change', mode: 'spec',
+    text: `<p><code>uspec-spec</code> opens a change. The CLI creates the change directory and records the current commit as the baseline, so every diff later in the change is taken against it.</p>`,
+    cmds: [{ c: `uspec change new ${CH}`, o: `Created .uspec/changes/${CH}/
+  change.md     empty
+  status.yaml   baseline 4f2c9e1` }],
+  },
+  {
+    chat: [["agent", "The refund window is defined in <code>product/support/refunds</code>, so the change starts there. Why the change?"], ["user", "Support rejects too many late requests by hand, and competitors offer 30 days."], ["agent", "Here’s <code>change.md</code>: refund window 14 → 30 days, starting at <code>product/support/refunds</code>, with your reason. OK?"], ["user", "Yes."]],
+    title: 'Describe the change', mode: 'spec',
+    text: `<p>The user says what changes and why; the agent asks until it's clear, finds the highest node the change affects and writes <code>change.md</code>. The user approves it. Every triage agent later reads it next to the diff.</p>`,
+    agents: [{ who: 'Main agent', note: 'with the user', diff: `<span class="o">.uspec/changes/${CH}/change.md</span>
+<span class="add"># Refund window: 14 → 30 days</span>
+<span class="add"></span>
+<span class="add">Starts at: product/support/refunds</span>
+<span class="add"></span>
+<span class="add">Customers can request a refund up to 30 days after delivery instead of 14.</span>
+<span class="add">Support gets too many late requests it has to reject by hand; 30 days</span>
+<span class="add">matches what competitors offer.</span>` }],
+  },
+  {
+    chat: [["agent", "I’ve updated <code>rules.md</code>: a customer can now request a refund within 30 days of delivery. OK to record it?"], ["user", "Looks good."], ["agent", "Recorded. It reaches 7 documents in <code>payments</code> and two screens. Triaging <code>payments</code> first; the screens call its API, so they wait for it."]],
+    title: 'Edit the starting document', mode: 'spec',
+    text: `<p>The agent edits <code>rules.md</code> and the user reviews it. Recording it as <code>updated</code> propagates the edit: the CLI applies the structural rules and adds every document that <em>may</em> depend on it as a candidate, with the rule that put it there.</p>
+           <ul>
+             <li>Documents in the same node that derive from <code>rules.md</code>: none (<code>user-story.md</code> is upstream of it).</li>
+             <li>Descendants of <code>refunds</code>: none.</li>
+             <li>Nodes that link to <code>refunds</code>, since <code>rules.md</code> is exposed: <code>payments</code> and both screens, all of their documents.</li>
+           </ul>`,
+    write: [RULES],
+    agents: [{ who: 'Main agent', note: 'rules.md of product/support/refunds', diff: RULES_DIFF }],
+    cmds2: [{ c: `uspec change set ${CH} ${RULES} updated`, o: `propagated from ${RULES}:
+<span class="add">+ ${PAY}/{api,logic,storage}.md    links to refunds</span>
+<span class="add">+ ${OPS}/{design,states}.md    links to refunds</span>
+<span class="add">+ ${HELP}/{design,states}.md    links to refunds</span>` }],
+    docs: {
+      [RULES]: ['updated', 'Edited by the user at the start of the change.'],
+      [PAY + '/api.md']: ['pending', CANDIDATE],
+      [PAY + '/logic.md']: ['pending', CANDIDATE],
+      [PAY + '/storage.md']: ['pending', CANDIDATE],
+      [OPS + '/design.md']: ['pending', SCREEN_CANDIDATE],
+      [OPS + '/states.md']: ['pending', SCREEN_CANDIDATE],
+      [HELP + '/design.md']: ['pending', SCREEN_CANDIDATE],
+      [HELP + '/states.md']: ['pending', SCREEN_CANDIDATE],
+    },
+    blocked: [PAY + '/storage.md', ...SCREENS_BLOCKED],
+    runs: { writer: 1 },
+  },
+  {
+    chat: [["agent", "<code>payments</code>: <code>api.md</code> doesn’t change, the window isn’t part of the API. <code>logic.md</code> does: its eligibility rule says 14 days."]],
+    title: 'Triage batch 1: payments', mode: 'spec',
+    text: `<p><code>change next</code> returns what's ready, grouped by what to do with it. Here it's one triage batch: the diff, <code>change.md</code> and the candidates to decide. One triage agent reads exactly those files; it doesn't need ancestors or templates.</p>
+           <p><code>storage.md</code> derives from <code>logic.md</code>, which is still pending, so it isn't ready yet.</p>`,
+    cmds: [{ c: `uspec change next ${CH}`, o: `triage:
+  read:
+    .uspec/changes/${CH}/change.md
+    ${RULES}               diff since 4f2c9e1
+  batch:
+    ${PAY}/api.md        links to refunds
+    ${PAY}/logic.md      links to refunds
+write:      none
+implement:  none` }],
+    read: [RULES, PAY + '/api.md', PAY + '/logic.md'],
+    agents: [{
+      who: 'Triage agent', note: '1 run for the batch',
+      decisions: [
+        [PAY + '/api.md', 'no-change', '<code>POST /refunds</code> takes an order id; the window isn’t part of the contract. <code>REFUND_WINDOW_EXPIRED</code> stays.'],
+        [PAY + '/logic.md', 'affected', 'The eligibility rule says 14 days.'],
+      ],
+    }],
+    cmds2: [{ c: `uspec change set ${CH} ${PAY}/api.md no-change \\\n  --reason "POST /refunds takes an order id; the window isn't part of the contract"`, o: '' },
+            { c: `uspec change set ${CH} ${PAY}/logic.md affected \\\n  --reason "The eligibility rule says 14 days"`, o: '' }],
+    docs: {
+      [PAY + '/api.md']: ['no-change', 'Triage: POST /refunds takes an order id; the window isn’t part of the contract.'],
+      [PAY + '/logic.md']: ['affected', 'Triage: the eligibility rule says 14 days.'],
+    },
+    blocked: [PAY + '/storage.md', ...SCREENS_BLOCKED],
+    runs: { triage: 1 },
+  },
+  {
+    chat: [["agent", "Updated <code>payments/logic.md</code>: <code>requestRefund</code> now rejects orders delivered more than 30 days ago. It’s an internal document, so it doesn’t reach the screens."]],
+    title: 'Write the ready documents: payments/logic.md', mode: 'spec',
+    text: `<p><code>change next</code> now returns one document to write. Each affected document gets its own writer, because each one has its own context: a different node, ancestors and upstream. When several are ready at once they're written in parallel (step 8).</p>
+           <p>The writer reads exactly the files <code>uspec context</code> lists. Recording <code>updated</code> propagates again: <code>logic.md</code> is internal, so it reaches <code>storage.md</code> (derives from it) and not the screens. <code>payments</code> has code paths, so it's added to <code>implementation</code>.</p>`,
+    cmds: [{ c: `uspec change next ${CH}`, o: `triage:     none
+write:
+  ${PAY}/logic.md
+implement:  none` },
+           { c: `uspec context ${PAY} --document logic --change ${CH}`, o: `# Instructions
+
+Service type:
+A Service is one deployable backend service, and the only owner of its
+code. Service-wide rules (idempotency, ledgers, compliance scope) live here
+once. A Service derives from the features it serves. It never derives from
+the experience branch: screens are built against its API, not the other
+way round.
+
+# Files
+
+document:
+  ${PAY}/logic.md
+ancestors:
+  overview.md
+  system/overview.md
+  system/services/overview.md
+upstream:
+  product/support/refunds/user-story.md
+  product/support/refunds/rules.md
+  ${PAY}/api.md
+change:
+  .uspec/changes/${CH}/change.md
+  ${RULES}                 diff since 4f2c9e1
+template:
+  .uspec/node-types/service/logic.md` }],
+    read: [RULES, 'product/support/refunds/user-story.md', PAY + '/api.md'],
+    write: [PAY + '/logic.md'],
+    agents: [{
+      who: 'Writer', note: 'logic.md of payments',
+      diff: `<span class="o"> ## Rules</span>
+<span class="rem">-- requestRefund rejects orders delivered more than 14 days ago (REFUND_WINDOW_EXPIRED).</span>
+<span class="add">+- requestRefund rejects orders delivered more than 30 days ago (REFUND_WINDOW_EXPIRED).</span>`,
+    }],
+    cmds2: [{ c: `uspec change set ${CH} ${PAY}/logic.md updated`, o: `propagated from ${PAY}/logic.md:
+<span class="add">~ ${PAY}/storage.md    derives from logic.md (already pending)</span>
+  linked nodes: none, logic.md is internal
+<span class="add">+ implementation: ${PAY}</span>` }],
+    docs: {
+      [PAY + '/logic.md']: ['updated', 'Triage marked it affected; the writer changed 14 to 30 days.'],
+      [PAY + '/storage.md']: ['pending', 'Candidate: links to refunds, and derives from logic.md, which was updated.'],
+    },
+    impl: { [PAY]: 'pending' },
+    blocked: SCREENS_BLOCKED,
+    runs: { writer: 1 },
+  },
+  {
+    chat: [["agent", "<code>payments/storage.md</code> doesn’t change: the window is checked against <code>orders.delivered_at</code>, which is already stored. <code>payments</code> is settled; the screens are next."]],
+    title: 'Triage batch 2: payments/storage.md', mode: 'spec',
+    text: `<p>The next batch is a single document, triaged against both diffs. Once it's settled, everything in <code>payments</code> is settled and the screens are unblocked.</p>`,
+    cmds: [{ c: `uspec change next ${CH}`, o: `triage:
+  read:
+    .uspec/changes/${CH}/change.md
+    ${RULES}               diff since 4f2c9e1
+    ${PAY}/logic.md      diff since 4f2c9e1
+  batch:
+    ${PAY}/storage.md    links to refunds; derives from logic.md
+write:      none
+implement:  none` }],
+    read: [RULES, PAY + '/logic.md', PAY + '/storage.md'],
+    agents: [{
+      who: 'Triage agent', note: '1 run',
+      decisions: [[PAY + '/storage.md', 'no-change', 'The window is checked against <code>orders.delivered_at</code>, which is already stored. No schema change.']],
+    }],
+    cmds2: [{ c: `uspec change set ${CH} ${PAY}/storage.md no-change \\\n  --reason "The window is checked against orders.delivered_at, already stored"`, o: '' }],
+    docs: { [PAY + '/storage.md']: ['no-change', 'Triage: the window is checked against orders.delivered_at, which is already stored.'] },
+    runs: { triage: 1 },
+  },
+  {
+    chat: [["agent", "Both screens’ <code>design.md</code> stay as they are. Both <code>states.md</code> mention 14 days: the ops console’s Expired state and the customer app’s eligibility copy. Updating them next."]],
+    title: 'Triage batch 3: the screens', mode: 'spec',
+    text: `<p>Four documents across two screens, one triage run. The diff contains only <code>rules.md</code>: <code>payments/api.md</code> didn't change, and <code>logic.md</code> is internal, so screens never see it.</p>`,
+    cmds: [{ c: `uspec change next ${CH}`, o: `triage:
+  read:
+    .uspec/changes/${CH}/change.md
+    ${RULES}               diff since 4f2c9e1
+  batch:
+    ${OPS}/design.md     links to refunds
+    ${OPS}/states.md     links to refunds
+    ${HELP}/design.md    links to refunds
+    ${HELP}/states.md    links to refunds
+write:      none
+implement:  ${PAY}` }],
+    read: [RULES, OPS + '/design.md', OPS + '/states.md', HELP + '/design.md', HELP + '/states.md'],
+    agents: [{
+      who: 'Triage agent', note: '1 run for the batch',
+      decisions: [
+        [OPS + '/design.md', 'no-change', 'Layout and components don’t mention the window.'],
+        [OPS + '/states.md', 'affected', 'The Expired state says “Outside the 14-day window”.'],
+        [HELP + '/design.md', 'no-change', 'Layout doesn’t mention the window.'],
+        [HELP + '/states.md', 'affected', 'The Eligible state’s copy says 14 days.'],
+      ],
+    }],
+    cmds2: [{ c: `uspec change set ${CH} ${OPS}/design.md no-change --reason "..."`, o: '' },
+            { c: `uspec change set ${CH} ${OPS}/states.md affected --reason "..."`, o: '' },
+            { c: `uspec change set ${CH} ${HELP}/design.md no-change --reason "..."`, o: '' },
+            { c: `uspec change set ${CH} ${HELP}/states.md affected --reason "..."`, o: '' }],
+    docs: {
+      [OPS + '/design.md']: ['no-change', 'Triage: layout and components don’t mention the window.'],
+      [OPS + '/states.md']: ['affected', 'Triage: the Expired state says “Outside the 14-day window”.'],
+      [HELP + '/design.md']: ['no-change', 'Triage: layout doesn’t mention the window.'],
+      [HELP + '/states.md']: ['affected', 'Triage: the Eligible state’s copy says 14 days.'],
+    },
+    runs: { triage: 1 },
+  },
+  {
+    chat: [["agent", "Both change text users see, so please review:<br>Ops console: “Outside the 30-day window”<br>Customer app: “You can request a refund up to 30 days after delivery.”"], ["user", "Approve both."], ["agent", "Recorded. The spec side is done: 3 documents updated, 4 unchanged. Run <code>/uspec-implement</code> to update the code of <code>payments</code> and the two screens."]],
+    title: 'Write the ready documents: two states.md', mode: 'spec',
+    text: `<p>Two documents in different nodes are ready at once. They're still one writer each, since their contexts differ, but the writers run in parallel. Documents of one node that derive from each other would be written one after another instead.</p>
+           <p>Customer-facing copy changed, so the skill shows both diffs to the user before recording them. Nothing derives from <code>states.md</code> and nothing links to the screens, so propagation adds only the two nodes to <code>implementation</code>. No documents are pending: the spec side is done.</p>`,
+    cmds: [{ c: `uspec change next ${CH}`, o: `triage:     none
+write:
+  ${OPS}/states.md
+  ${HELP}/states.md
+implement:  ${PAY}` },
+           { c: `uspec context ${OPS} --document states --change ${CH}`, o: `# Instructions
+
+Screen type:
+A Screen is one user-facing flow in one app. It may serve several features,
+and one feature may appear on several screens; links show that. It is
+built against the API of the service it calls.
+
+# Files
+
+document:
+  ${OPS}/states.md
+ancestors:
+  overview.md
+  experience/overview.md
+  experience/ops-console/shell.md
+upstream:
+  product/support/refunds/user-story.md
+  product/support/refunds/rules.md
+  ${PAY}/api.md
+  ${OPS}/design.md
+change:
+  .uspec/changes/${CH}/change.md
+  ${RULES}                 diff since 4f2c9e1
+template:
+  .uspec/node-types/screen/states.md` },
+           { c: `uspec context ${HELP} --document states --change ${CH}`, o: `<span class="o">(the same shape, under experience/customer-app)</span>` }],
+    read: [RULES, 'product/support/refunds/user-story.md', PAY + '/api.md', OPS + '/design.md', HELP + '/design.md'],
+    write: [OPS + '/states.md', HELP + '/states.md'],
+    agents: [
+      { who: 'Writer', note: 'states.md of ops-console/refunds',
+        diff: `<span class="rem">-- Expired: delivered more than 14 days ago. Approve is disabled: "Outside the 14-day window".</span>
+<span class="add">+- Expired: delivered more than 30 days ago. Approve is disabled: "Outside the 30-day window".</span>` },
+      { who: 'Writer', note: 'states.md of customer-app/order-help, in parallel',
+        diff: `<span class="rem">-- Eligible: "You can request a refund up to 14 days after delivery."</span>
+<span class="add">+- Eligible: "You can request a refund up to 30 days after delivery."</span>` },
+    ],
+    cmds2: [{ c: `uspec change set ${CH} ${OPS}/states.md updated`, o: `<span class="add">+ implementation: ${OPS}</span>` },
+            { c: `uspec change set ${CH} ${HELP}/states.md updated`, o: `<span class="add">+ implementation: ${HELP}</span>` }],
+    docs: {
+      [OPS + '/states.md']: ['updated', 'Triage marked it affected; the writer changed the Expired state to 30 days.'],
+      [HELP + '/states.md']: ['updated', 'Triage marked it affected; the writer changed the Eligible copy to 30 days.'],
+    },
+    impl: { [OPS]: 'pending', [HELP]: 'pending' },
+    runs: { writer: 2 },
+  },
+  {
+    chat: [["user", "/uspec-implement"], ["agent", "Using change: <code>refund-window</code>. <code>payments</code> goes first, since both screens link to it."], ["agent", "<code>payments</code>: <code>REFUND_WINDOW_DAYS</code> is now 30, with tests at day 30 and 31. Tests pass."]],
+    title: 'Implement payments', mode: 'impl',
+    text: `<p><code>uspec-implement</code> takes over. <code>change next</code> returns only <code>payments</code>: the screens link to it, so they're implemented after it.</p>
+           <p>The implementer reads all of the node's documents, including internal ones, plus ancestors and upstream, and changes code only under the node's code paths.</p>`,
+    cmds: [{ c: `uspec change next ${CH}`, o: `triage:     none
+write:      none
+implement:
+  ${PAY}` },
+           { c: `uspec context ${PAY} --implement --change ${CH}`, o: `# Instructions
+
+Service type:
+A Service is one deployable backend service, and the only owner of its
+code. Service-wide rules (idempotency, ledgers, compliance scope) live here
+once. A Service derives from the features it serves. It never derives from
+the experience branch: screens are built against its API, not the other
+way round.
+
+# Files
+
+ancestors:
+  overview.md
+  system/overview.md
+  system/services/overview.md
+upstream:
+  product/support/refunds/user-story.md
+  product/support/refunds/rules.md
+documents:
+  ${PAY}/api.md
+  ${PAY}/logic.md
+  ${PAY}/storage.md
+change:
+  .uspec/changes/${CH}/change.md
+code:
+  services/payments/` }],
+    read: [RULES, 'product/support/refunds/user-story.md', PAY + '/api.md', PAY + '/logic.md', PAY + '/storage.md'],
+    agents: [{
+      who: 'Implementer', impl: true, note: 'code of payments',
+      diff: `<span class="o">services/payments/src/refunds/eligibility.ts</span>
+<span class="rem">-export const REFUND_WINDOW_DAYS = 14;</span>
+<span class="add">+export const REFUND_WINDOW_DAYS = 30;</span>
+<span class="o">services/payments/src/refunds/eligibility.test.ts: boundary cases at day 30 and 31</span>`,
+      after: 'Verified against logic.md: tests pass.',
+    }],
+    cmds2: [{ c: `uspec change set ${CH} ${PAY} done`, o: '' }],
+    impl: { [PAY]: 'done' },
+    runs: { impl: 1 },
+  },
+  {
+    chat: [["agent", "Both screens updated in parallel: the ops console and customer app strings now say 30 days. Expiry itself still comes from the payments API."]],
+    title: 'Implement the screens', mode: 'impl',
+    text: `<p>With <code>payments</code> done, both screens are ready. One implementer per node, in parallel, each with its own <code>uspec context --implement</code> list.</p>`,
+    cmds: [{ c: `uspec change next ${CH}`, o: `triage:     none
+write:      none
+implement:
+  ${OPS}
+  ${HELP}` }],
+    read: [RULES, PAY + '/api.md', OPS + '/design.md', OPS + '/states.md', HELP + '/design.md', HELP + '/states.md'],
+    agents: [
+      { who: 'Implementer', impl: true, note: 'code of ops-console/refunds',
+        diff: `<span class="o">apps/ops-console/src/refunds/strings.ts</span>
+<span class="rem">-  expired: "Outside the 14-day window",</span>
+<span class="add">+  expired: "Outside the 30-day window",</span>`,
+        after: 'Expiry itself comes from the API’s REFUND_WINDOW_EXPIRED, so no logic change.' },
+      { who: 'Implementer', impl: true, note: 'code of customer-app/order-help, in parallel',
+        diff: `<span class="o">apps/customer-app/src/order-help/copy.ts</span>
+<span class="rem">-  eligible: "You can request a refund up to 14 days after delivery.",</span>
+<span class="add">+  eligible: "You can request a refund up to 30 days after delivery.",</span>` },
+    ],
+    cmds2: [{ c: `uspec change set ${CH} ${OPS} done`, o: '' }, { c: `uspec change set ${CH} ${HELP} done`, o: '' }],
+    impl: { [OPS]: 'done', [HELP]: 'done' },
+    runs: { impl: 2 },
+  },
+  {
+    chat: [["agent", "Validated and closed <code>refund-window</code>. Spec: 3 documents updated, 4 unchanged with reasons. Code: 3 nodes. Ready to commit."], ["user", "Thanks, committing."]],
+    title: 'Validate and close', mode: 'cli',
+    text: `<p>Nothing is pending. <code>close</code> runs <code>validate</code> and removes the change directory. It was committed with the work, so git history keeps every decision and reason.</p>`,
+    cmds: [{ c: `uspec change close ${CH}`, o: `validate: ok
+removed .uspec/changes/${CH}/` }],
+    closed: true,
+  },
+];
+
+// ---------- state ----------
+let cur = 0, selected = null;
+
+function stateAt(i) {
+  const docs = {}, order = [], impl = {}, implOrder = [], runs = { triage: 0, writer: 0, impl: 0 };
+  for (let s = 0; s <= i; s++) {
+    const st = STEPS[s];
+    for (const [p, v] of Object.entries(st.docs || {})) { if (!(p in docs)) order.push(p); const reason = ['affected', 'no-change'].includes(v[0]) ? v[1].replace(/^Triage: /, '') : docs[p] && docs[p].reason;
+      docs[p] = { state: v[0], why: v[1], step: s, reason }; }
+    for (const [p, v] of Object.entries(st.impl || {})) { if (!(p in impl)) implOrder.push(p); impl[p] = v; }
+    for (const [k, v] of Object.entries(st.runs || {})) runs[k] += v;
+  }
+  const changed = new Set([...Object.keys(STEPS[i].docs || {}), ...Object.keys(STEPS[i].impl || {})]);
+  return { docs, order, impl, implOrder, runs, changed, blocked: new Set(STEPS[i].blocked || []) };
+}
+
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const tagFor = s => `<span class="tag s-${s}">${s}</span>`;
+
+function renderTree(S) {
+  const st = STEPS[cur];
+  const read = new Set(st.read || []), write = new Set(st.write || []);
+  document.getElementById('tree').innerHTML = NODES.map(n => {
+    const docs = n.docs.map(d => {
+      const p = n.p + '/' + d + '.md';
+      const info = S.docs[p];
+      let cls = 'doc';
+      if (info) cls += ' s-' + (S.blocked.has(p) && info.state === 'pending' ? 'blocked' : info.state);
+      if (read.has(p)) cls += ' read';
+      if (write.has(p)) cls += ' write';
+      if (selected === p) cls += ' sel';
+      return `<button class="${cls}" data-p="${p}" title="${p}">${d}.md</button>`;
+    }).join('');
+    const im = S.impl[n.p];
+    const imTag = im ? `<span class="impl ${im === 'done' ? 's-done' : 's-pending'}">impl: ${im}</span>` : '';
+    const links = (n.links || []).map(l => `<span class="lk">→ ${short(l)}</span>`).join('');
+    return `<div class="node k-${n.k}" style="--d:${n.d}">
+      <span class="nm">${n.p.split('/').pop()}/</span><span class="ty">${n.t}</span>${n.code ? '<span class="code">code</span>' : ''}${imTag}
+      ${links}<div class="docs">${docs}</div></div>`;
+  }).join('');
+}
+
+function renderDetail(S) {
+  const el = document.getElementById('detail');
+  if (!selected) { el.innerHTML = '<h3>Selected document</h3><p class="none">Click a document in the tree to see why it’s in the change.</p>'; return; }
+  const info = S.docs[selected];
+  const st = STEPS[cur];
+  const roles = [];
+  if ((st.read || []).includes(selected)) roles.push('read by this step’s agent');
+  if ((st.write || []).includes(selected)) roles.push('written in this step');
+  el.innerHTML = `<h3>Selected document</h3><div class="p">${selected}</div>` +
+    (info ? `<p style="margin:8px 0 4px">${tagFor(S.blocked.has(selected) && info.state === 'pending' ? 'blocked' : info.state)}</p><p>${esc(info.why)}</p>`
+          : '<p class="none" style="margin-top:8px">Not in the change: no rule reached it.</p>') +
+    (roles.length ? `<p class="none">${roles.join(', ')}</p>` : '');
+}
+
+function term(cmds) {
+  return (cmds || []).map(x => `<div class="term">${x.c ? `<span class="c">${esc(x.c)}</span>${x.o ? '\n' : ''}` : ''}${x.o ? `<span class="o">${x.o}</span>` : ''}</div>`).join('');
+}
+
+function renderChat() {
+  const ch = STEPS[cur].chat;
+  document.getElementById('chat').innerHTML = '<h3>Conversation</h3>' + (ch
+    ? '<div class="chat">' + ch.map(([who, t]) => `<div class="msg ${who}"><span class="from">${who === 'user' ? 'User' : 'Main agent'}</span>${t}</div>`).join('') + '</div>'
+    : '<p class="empty">Nothing said in this step.</p>');
+}
+
+function renderStep() {
+  const st = STEPS[cur];
+  const label = { spec: 'Change spec', impl: 'Implement', cli: 'CLI' }[st.mode];
+  document.getElementById('step').innerHTML =
+    `<span class="mode ${st.mode}">${label}</span><h2>${cur}. ${st.title}</h2>${st.text}${term(st.cmds)}`;
+
+  const ag = document.getElementById('agents');
+  if (!st.agents) {
+    ag.innerHTML = `<h3>Agents</h3><p class="empty">No agent runs in this step${st.mode === 'cli' ? ': the CLI does it' : ''}.</p>`;
+  } else {
+    ag.innerHTML = `<h3>Agents</h3>` + st.agents.map(a => `
+      <div class="card agent ${a.impl ? 'impl' : ''}" style="margin-bottom:10px">
+        <div class="who">${a.who} <small>· ${a.note}</small></div>
+        ${a.reads ? `<div class="none" style="font-size:.8rem;color:var(--muted)">Reads</div><ul class="reads">${a.reads.map(r => `<li>${esc(r[0])}<span>${r[1]}</span></li>`).join('')}</ul>` : ''}
+        ${a.decisions ? `<table class="decisions"><tbody>${a.decisions.map(d => `<tr><td>${short(d[0])}</td><td>${tagFor(d[1])}</td><td>${d[2]}</td></tr>`).join('')}</tbody></table>` : ''}
+        ${a.diff ? `<div class="term">${a.diff}</div>` : ''}
+        ${a.after ? `<p class="note">${a.after}</p>` : ''}
+      </div>`).join('') + term(st.cmds2);
+  }
+}
+
+function renderRuns(S) {
+  const r = S.runs;
+  document.getElementById('runs').innerHTML =
+    `<span><b>${r.triage}</b>triage</span><span><b>${r.writer}</b>writers</span><span><b>${r.impl}</b>implementers</span><span><b>${r.triage + r.writer + r.impl}</b>total</span>`;
+  document.getElementById('compare').textContent = cur >= 7
+    ? 'With one subagent per candidate, triage alone would have been 7 runs, each loading full writer context. Here it took 3 runs that read only the diff and the candidates.'
+    : 'Triage runs once per batch. A writer with full context runs only for documents marked affected.';
+}
+
+function renderStatus(S) {
+  const el = document.getElementById('status');
+  if (STEPS[cur].closed) { el.innerHTML = '<p class="empty">Removed on close. Git history keeps it.</p>'; return; }
+  if (cur === 0) { el.innerHTML = '<p class="empty">No change open.</p>'; return; }
+  const mark = (p, txt) => S.changed.has(p) ? `<span class="new">${txt}</span>` : txt;
+  let y = `<span class="k">baseline:</span> 4f2c9e1\n<span class="k">documents:</span>`;
+  if (!S.order.length) y += ' {}';
+  for (const p of S.order) {
+    const d = S.docs[p];
+    const val = d.reason ? `{state: ${d.state}, reason: "${esc(d.reason)}"}` : `{state: ${d.state}}`;
+    y += '\n  ' + mark(p, `${esc(p)}: ${val}`);
+  }
+  y += `\n<span class="k">implementation:</span>`;
+  if (!S.implOrder.length) y += ' {}';
+  for (const p of S.implOrder) y += '\n  ' + mark(p, `${p}: ${S.impl[p]}`);
+  el.innerHTML = `<pre class="yaml">${y}</pre>`;
+}
+
+function renderDots() {
+  document.getElementById('dots').innerHTML = STEPS.map((s, i) =>
+    `<button role="tab" aria-selected="${i === cur}" aria-label="Step ${i}: ${s.title}" title="${i}. ${s.title}" data-i="${i}"
+      class="${s.mode === 'impl' ? 'impl ' : ''}${i < cur ? 'done' : i === cur ? 'cur' : ''}"></button>`).join('');
+  document.getElementById('count').textContent = `Step ${cur} of ${STEPS.length - 1}`;
+  document.getElementById('prev').disabled = cur === 0;
+  document.getElementById('next').disabled = cur === STEPS.length - 1;
+}
+
+function render() {
+  const S = stateAt(cur);
+  renderDots(); renderTree(S); renderDetail(S); renderChat(); renderStep(); renderRuns(S); renderStatus(S);
+}
+
+function go(i) { cur = Math.max(0, Math.min(STEPS.length - 1, i)); render(); }
+document.getElementById('prev').onclick = () => go(cur - 1);
+document.getElementById('next').onclick = () => go(cur + 1);
+document.getElementById('reset').onclick = () => { selected = null; go(0); };
+document.getElementById('dots').onclick = e => { const b = e.target.closest('button'); if (b) go(+b.dataset.i); };
+document.getElementById('tree').onclick = e => {
+  const b = e.target.closest('.doc'); if (!b) return;
+  selected = selected === b.dataset.p ? null : b.dataset.p; render();
+};
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea')) return;
+  if (e.key === 'ArrowRight') go(cur + 1);
+  if (e.key === 'ArrowLeft') go(cur - 1);
+});
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Example Spec Tree</title>
+<style>
+:root {
+  --bg: #fbfaf7; --surface: #ffffff; --surface-2: #f3f1ec;
+  --text: #1d1c1a; --muted: #6b6860; --border: #e3e0d8;
+  --accent: #b4532a; --accent-soft: #f6e4da;
+  --prod: #2f6f4f; --prod-soft: #e1efe6;
+  --exp: #6a4bb0; --exp-soft: #ebe5f7;
+  --sys: #1f5f9e; --sys-soft: #e0ebf6;
+  --sol: #a3620a; --sol-soft: #f7ead3;
+  --root: #6b6860; --root-soft: #ecebe6;
+  --bad: #b33a3a; --bad-soft: #f7e0e0;
+  --warn: #9a6a00; --warn-soft: #f6edd2;
+  --ok: #2f6f4f;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161513; --surface: #1e1d1a; --surface-2: #272522; --text: #ece9e2; --muted: #a29e94;
+    --border: #36332e; --accent: #e08a62; --accent-soft: #3a2a22;
+    --prod: #7cc79c; --prod-soft: #1f3328; --exp: #b39cf0; --exp-soft: #2c2540;
+    --sys: #7fb2e8; --sys-soft: #1d2b3b; --sol: #e3a957; --sol-soft: #3a2c17;
+    --root: #a29e94; --root-soft: #2a2825; --bad: #ec8b8b; --bad-soft: #3d2121;
+    --warn: #e3c157; --warn-soft: #3a3217; --ok: #7cc79c;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161513; --surface: #1e1d1a; --surface-2: #272522; --text: #ece9e2; --muted: #a29e94;
+  --border: #36332e; --accent: #e08a62; --accent-soft: #3a2a22;
+  --prod: #7cc79c; --prod-soft: #1f3328; --exp: #b39cf0; --exp-soft: #2c2540;
+  --sys: #7fb2e8; --sys-soft: #1d2b3b; --sol: #e3a957; --sol-soft: #3a2c17;
+  --root: #a29e94; --root-soft: #2a2825; --bad: #ec8b8b; --bad-soft: #3d2121;
+  --warn: #e3c157; --warn-soft: #3a3217; --ok: #7cc79c;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 40px 16px 96px; }
+h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.01em; }
+h3 { font-size: 1rem; margin: 0 0 4px; }
+p { margin: 0 0 10px; max-width: 80ch; }
+.lede { color: var(--muted); font-size: 1.05rem; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 24px 0 0; border-bottom: 1px solid var(--border); }
+.tabs button { font: inherit; font-size: 0.92rem; background: none; border: 1px solid transparent; border-bottom: none; padding: 8px 14px; border-radius: 8px 8px 0 0; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { background: var(--surface); border-color: var(--border); color: var(--text); font-weight: 600; }
+.tabs button:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; padding: 20px; }
+
+.bar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 0.88rem; background: var(--surface); color: var(--muted); border: none; padding: 6px 14px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); font-weight: 600; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.88rem; color: var(--muted); }
+.stats b { color: var(--text); font-size: 1.02rem; margin-right: 3px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.82rem; color: var(--muted); margin: 0 0 14px; align-items: center; }
+.legend i { display: inline-block; vertical-align: middle; margin-right: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid; }
+.ln { width: 26px; height: 0; border-top: 1.5px dashed var(--muted); }
+
+.val { border-radius: 8px; padding: 8px 12px; margin: 0 0 14px; font-size: 0.88rem; background: var(--surface-2); }
+.val summary { cursor: pointer; font-weight: 600; }
+.val ul { margin: 8px 0 0; padding-left: 18px; max-height: 260px; overflow: auto; }
+.val li { margin: 2px 0; }
+.val .e { color: var(--bad); } .val .w { color: var(--warn); }
+.val a { color: inherit; cursor: pointer; text-decoration: underline dotted; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+@media (max-width: 940px) { .layout { grid-template-columns: 1fr; } }
+
+.graph-scroll { overflow-x: auto; }
+.graph { position: relative; display: grid; grid-template-columns: minmax(400px, 1fr) var(--gutter, 220px); min-width: 620px; }
+.rows { display: flex; flex-direction: column; gap: 3px; }
+.row { position: relative; display: flex; gap: 10px; align-items: flex-start; padding: 5px 10px 6px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: opacity .15s, border-color .15s; border-left: 4px solid var(--k); margin-left: calc(var(--d) * 20px); }
+.row:hover { border-color: var(--k); }
+.row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row .main { min-width: 0; flex: 1; }
+.row .nm { font-weight: 600; font-size: 0.9rem; }
+.row .id { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: 6px; }
+.row .flag { font-size: 11px; color: var(--k); margin-left: 6px; font-weight: 600; white-space: nowrap; }
+.row .flag.dim { color: var(--muted); font-weight: 400; }
+.row .issue { position: absolute; right: 6px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.row .issue.e { background: var(--bad); }
+.docs { display: inline-flex; flex-wrap: wrap; gap: 3px; margin: 3px 0 0 6px; }
+.view-nodes .row .docs { margin: 0 0 0 8px; vertical-align: 1px; }
+.view-nodes .row { padding: 3px 10px 4px; }
+.view-nodes .row .nm { font-size: 0.86rem; }
+.doc { font-family: var(--mono); font-size: 10.5px; padding: 0 5px; border-radius: 4px; background: var(--ks); color: var(--text); border: 1px solid transparent; line-height: 1.6; }
+.doc.opt { background: none; border: 1px dashed var(--k); color: var(--muted); }
+.doc.sup { background: none; border: 1px solid var(--border); color: var(--muted); font-style: italic; }
+.doc.miss { background: var(--bad-soft); color: var(--bad); border: 1px dashed var(--bad); }
+.codei { font-family: var(--mono); font-size: 10.5px; color: var(--sys); margin-left: 6px; }
+.graph.focus .row { opacity: 0.3; }
+.graph.focus .row.on { opacity: 1; }
+.graph.focus .row.ctx { opacity: 0.8; }
+.graph.focus .row.sel { opacity: 1; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.k-prod { --k: var(--prod); --ks: var(--prod-soft); }
+.k-exp  { --k: var(--exp);  --ks: var(--exp-soft); }
+.k-sys  { --k: var(--sys);  --ks: var(--sys-soft); }
+.k-sol  { --k: var(--sol);  --ks: var(--sol-soft); }
+.k-root { --k: var(--root); --ks: var(--root-soft); }
+
+svg.arcs { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+svg.arcs .arc { fill: none; stroke: var(--muted); stroke-width: 1.1; stroke-dasharray: 4 3; opacity: var(--arc-o, 0.5); transition: opacity .15s; }
+svg.arcs .arc.self { stroke-dasharray: none; }
+svg.arcs .arc.bad { stroke: var(--bad); opacity: 0.8; }
+svg.arcs .dot { fill: var(--muted); opacity: var(--arc-o, 0.6); }
+.view-nodes { --arc-o: 0.22; }
+.graph.focus svg.arcs .arc { opacity: 0.04; }
+.graph.focus svg.arcs .dot { opacity: 0.06; }
+.graph.focus svg.arcs .arc.up { opacity: 1; stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+.graph.focus svg.arcs .arc.down { opacity: 1; stroke: var(--sys); stroke-width: 2; stroke-dasharray: none; }
+.graph.focus svg.arcs .dot.up { opacity: 1; fill: var(--accent); }
+.graph.focus svg.arcs .dot.down { opacity: 1; fill: var(--sys); }
+
+.detail { position: sticky; top: 16px; background: var(--surface-2); border-radius: 10px; padding: 16px; font-size: 0.88rem; max-height: calc(100vh - 32px); overflow: auto; }
+.detail .empty { color: var(--muted); }
+.detail h3 { font-size: 1.02rem; word-break: break-all; }
+.detail .desc { color: var(--muted); margin-bottom: 8px; }
+.detail dl { margin: 0; }
+.detail dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; margin-top: 12px; }
+.detail dd { margin: 4px 0 0; }
+.chip { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 999px; margin: 2px 4px 2px 0; background: var(--ks); color: var(--k); border: 1px solid var(--k); cursor: pointer; }
+.doclist, .plist { list-style: none; margin: 0; padding: 0; }
+.doclist li { padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.doclist li:last-child { border-bottom: none; }
+.doclist .mono { font-weight: 600; }
+.doclist small { color: var(--muted); display: block; line-height: 1.4; }
+.plist li { font-family: var(--mono); font-size: 11.5px; padding: 2px 0; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.plist li a { cursor: pointer; color: var(--text); text-decoration: underline dotted var(--muted); }
+.plist .note { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--muted); font-size: 11.5px; }
+.plist .why { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); min-width: 62px; }
+.tag-opt { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-left: 6px; }
+.body { white-space: pre-wrap; font-size: 0.84rem; background: var(--surface); border-radius: 6px; padding: 8px 10px; margin: 0; }
+.ok { color: var(--ok); font-weight: 700; } .no { color: var(--bad); font-weight: 700; }
+.issues li { color: var(--bad); font-size: 0.84rem; } .issues li.w { color: var(--warn); }
+.code { color: var(--sys); }
+
+.tpl summary { cursor: pointer; font-size: 11px; color: var(--accent); margin-top: 3px; }
+.tpl pre { margin-top: 4px; font-family: var(--mono); font-size: 11px; }
+
+/* code view */
+.cgraph { position: relative; display: grid; grid-template-columns: minmax(260px, 1fr) 110px minmax(240px, 1fr); min-width: 640px; }
+.chead { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; margin: 0 0 6px; }
+.cgraph .row { margin-left: calc(var(--d) * 16px); padding: 3px 10px 4px; }
+.cgraph .row .nm { font-size: 0.84rem; }
+.cgraph .row .pre { color: var(--muted); font-weight: 400; font-family: var(--mono); font-size: 11px; }
+.crow { --k: var(--border); --ks: var(--surface-2); border-left-width: 1px; font-family: var(--mono); font-size: 12px; cursor: pointer; }
+.crow .nm { font-family: var(--mono); font-weight: 400; font-size: 12px !important; }
+.crow.owned { --k: var(--sys); border-left-width: 4px; }
+.crow.owned .nm { font-weight: 600; }
+.crow.multi { --k: var(--warn); }
+.crow .cnt { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; font-size: 11px; color: var(--muted); margin-left: 6px; }
+.crow.multi .cnt { color: var(--warn); font-weight: 600; }
+svg.links { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+svg.links path { fill: none; stroke: var(--sys); stroke-width: 1.1; opacity: 0.35; transition: opacity .15s; }
+svg.links path.multi { stroke: var(--warn); opacity: 0.6; }
+.cgraph.focus .row { opacity: 0.3; }
+.cgraph.focus .row.on { opacity: 1; }
+.cgraph.focus .row.sel { opacity: 1; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cgraph.focus svg.links path { opacity: 0.05; }
+.cgraph.focus svg.links path.on { opacity: 1; stroke: var(--accent); stroke-width: 2; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Example spec tree</h1>
+  <p class="lede">The Forkly example in <code>examples/example_product/</code>. <b>Types</b> shows the node types and which types may link to which. <b>Nodes</b> shows the concrete tree in <code>docs/</code>: every node, its files, and what it actually derives from. Click anything to trace its links; in Nodes, the side panel also shows the agent context.</p>
+
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="panel">
+    <p id="blurb"></p>
+    <div class="bar">
+      <div class="seg" id="seg">
+        <button data-v="types">Types</button><button data-v="nodes">Nodes</button><button data-v="code">Code</button>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--prod-soft);border-color:var(--prod)"></i>product</span>
+      <span><i class="sw" style="background:var(--exp-soft);border-color:var(--exp)"></i>experience / frontend</span>
+      <span><i class="sw" style="background:var(--sys-soft);border-color:var(--sys)"></i>system / backend</span>
+      <span><i class="sw" style="background:var(--sol-soft);border-color:var(--sol)"></i>middle layer</span>
+      <span><i class="ln"></i>derives_from (dot = upstream end)</span>
+      <span><span class="doc" style="--ks:var(--surface-2)">doc.md</span> required</span>
+      <span><span class="doc opt" style="--k:var(--muted)">doc.md</span> optional</span>
+      <span class="only-nodes"><span class="doc sup">api-extra/…</span> extra files of a document</span>
+      <span class="only-nodes"><span class="codei" style="margin:0">&lt;/&gt;</span> has code paths</span>
+    </div>
+    <div id="val"></div>
+    <div class="layout">
+      <div>
+        <div class="graph-scroll"><div class="graph" id="graph"><div class="rows" id="rows"></div><div></div><svg class="arcs" id="arcs"></svg></div></div>
+        <div class="graph-scroll" id="cscroll" style="display:none">
+          <div class="cgraph" id="cgraph">
+            <div><div class="chead">Spec (node.yaml → code)</div><div class="rows" id="srows"></div></div>
+            <div></div>
+            <div><div class="chead">Code</div><div class="rows" id="crows"></div></div>
+            <svg class="links" id="clinks"></svg>
+          </div>
+        </div>
+      </div>
+      <aside class="detail" id="detail"></aside>
+    </div>
+  </div>
+</main>
+<script>
+var DATA = {"example_product":{"types":{"architecture":{"name":"Architecture","description":"Rules that apply across services.","documents":{"context-map":{"description":"Every service, what it owns, and who it talks to. Ownership means the\nservice is the only one that writes that data.","template":"# Context map\n\n## Services\n\n| Service | Owns | Talks to |\n|---|---|---|\n| <service> | <data it is the only writer of> | <services, sync or async> |\n\n## External systems\n\n| System | Purpose | Direction |\n|---|---|---|\n| <provider> | <what for> | <in / out / both> |"},"conventions":{"description":"Conventions every service follows. State the rule, then one example.","derives_from":["context-map"],"template":"# Conventions\n\n## API style\n\n## Errors\n\n## Events\n\n## IDs and time"},"decisions":{"description":"Architecture decisions that still apply. Remove a decision when it no\nlonger applies; history lives in git.","required":false,"template":"# Decisions\n\n## <NNNN> <title>\n\n- Context: <why a decision was needed>\n- Decision: <what was decided>\n- Consequences: <what follows from it>"}},"format":"dir","body":"Architecture holds what every service must follow."},"design-system":{"name":"Design system","description":"Shared UI foundations and components.","code":true,"documents":{"foundations":{"description":"The tokens every surface uses. Name each token once; components and\nscreens refer to tokens, never to raw values.","template":"# Foundations\n\n## Colour\n\n## Typography\n\n## Spacing\n\n## Motion"},"components":{"description":"Each shared component: what it is for, its variants, and when not to use it.","template":"# Components\n\n## <Component name>\n\n<What it is for.>\n\n- Variants: <list>\n- Don't use for: <cases>"}},"format":"dir","body":"The Design system holds UI rules every surface follows. Its code is the\nshared UI package."},"domain-model":{"name":"Domain model","description":"Core entities and their lifecycles.","derives_from":["glossary"],"documents":{"entities":{"description":"Every core entity, its fields and the invariants that always hold.\nUse glossary terms for entity names.","template":"# Entities\n\n## <Entity>\n\n<What it represents.>\n\n### Fields\n\n| Field | Type | Description |\n|---|---|---|\n| <field> | <type> | <meaning> |\n\n### Invariants\n\n- <Rule that is always true.>"},"lifecycle":{"description":"One state machine per aggregate that changes state over time. Every\ntransition names the event that causes it.","derives_from":["entities"],"template":"# Lifecycles\n\n## <Aggregate>\n\n### States\n\n| State | Meaning |\n|---|---|\n| <STATE> | <what it means> |\n\n### Transitions\n\n| From | Event | To |\n|---|---|---|\n| <STATE> | <event> | <STATE> |"}},"format":"dir","body":"The Domain model defines entities and state machines shared by all services."},"experience":{"name":"Experience","description":"What users see, split by surface.","children":["design-system","surface","messaging"],"documents":{"overview":{"description":"A summary of the surfaces: who uses each one, on which platform.","template":"# Experience\n\n## Surfaces\n\n<One line per app: audience and platform.>\n\n## Shared\n\n<What all surfaces share: design system, messaging, accessibility level.>"}},"format":"dir","body":"The experience branch is split by surface (app), then by screen."},"feature":{"name":"Feature","description":"One user problem and the behaviour that solves it.","derives_from":["glossary"],"documents":{"user-story":{"description":"One user problem in product terms. Name no services, apps or screens.\nEvery acceptance criterion must be testable and written as\nGiven / When / Then.","template":"# <Feature name>\n\n## Story\n\nAs a <user>, I want <goal>, so that <reason>.\n\n## Acceptance criteria\n\n- Given <context>, when <action>, then <outcome>.\n\n## Out of scope\n\n- <Related behaviour this feature does not cover.>"},"rules":{"description":"Business rules in product terms: limits, eligibility, calculations.\nAdd it only when the user story can't hold the rules. One rule per\nbullet, each with an example.","required":false,"derives_from":["user-story"],"template":"# Rules\n\n- <Rule.> Example: <concrete case.>"}},"format":"dir","body":"A Feature describes one user problem in product terms. It lists no code\npaths and names no services or apps; those link to it, not the other way round."},"glossary":{"name":"Glossary","description":"Shared product vocabulary.","documents":{"terms":{"description":"Every word with a specific meaning in this product. Use these terms,\nand only these, everywhere else in the spec.","template":"# Glossary\n\n## Terms\n\n| Term | Meaning | Not to confuse with |\n|---|---|---|\n| <term> | <one-sentence meaning> | <similar term, or —> |"}},"format":"dir","body":"The Glossary defines words the whole spec uses: order, basket, payout, courier shift."},"messaging":{"name":"Messaging","description":"Email, SMS and push templates.","code":true,"derives_from":["feature"],"documents":{"templates":{"description":"Every message the product sends outside the apps. One section per\nmessage, named by its id.","template":"# Messages\n\n## <message-id>\n\n- Channel: <email | sms | push>\n- Trigger: <what sends it>\n- Audience: <who receives it>\n- Copy: <text, with {placeholders}>"}},"format":"dir","body":"Messaging holds every message the product sends outside the apps."},"platform":{"name":"Platform","description":"Infrastructure, deploys, observability.","code":true,"derives_from":["architecture"],"documents":{"infra":{"description":"Where and how services run. Describe the target state, not the migration to it.","template":"# Platform\n\n## Environments\n\n## Deploy\n\n## Observability\n\n## Secrets"}},"format":"dir","body":"Platform describes where and how services run."},"product-area":{"name":"Product area","description":"A group of related user problems.","children":["product-area","feature"],"documents":{"overview":{"description":"What this area covers and where it stops. Summarise the features\nbelow; don't repeat their user stories.","template":"# <Area name>\n\n<Which user problem this area covers, and for whom.>\n\n## Features\n\n<One line per feature.>\n\n## Boundaries\n\n<What belongs to a neighbouring area instead.>"}},"format":"dir","body":"A Product area groups features by the user problem they solve. Areas may nest."},"product":{"name":"Product","description":"What and why, split by user problem.","children":["product-area","glossary"],"documents":{"overview":{"description":"A summary of the product areas and how users move between them.\nWritten from the areas below; update it when an area is added or changes.","template":"# Product\n\n## Areas\n\n<One line per product area: name, and the user problem it covers.>\n\n## How the areas connect\n\n<The main journeys that cross areas, e.g. discovery → ordering → delivery.>"}},"format":"dir","body":"The product branch describes user problems. It never names services,\napps, screens or code."},"root":{"name":"Product spec","description":"Top of the spec tree.","children":["product","experience","system"],"documents":{"overview":{"description":"The product on one page: what it is, who it is for, what it is not.\nWrite for someone who has never heard of the product. Keep it stable:\nit changes only when the product's direction changes.","template":"# <Product name>\n\n<One paragraph: what the product does and for whom.>\n\n## Users\n\n<Each kind of user and what they come for.>\n\n## Scope\n\n<What the product does, in a few bullets.>\n\n## Out of scope\n\n<What it deliberately does not do.>\n\n## Constraints\n\n<Hard constraints every part of the spec must respect: platforms, regions, regulation.>"}},"format":"dir","body":"The root splits the spec into three branches, each cut along its own\nboundaries: product by user problem, experience by surface, system by service."},"screen":{"name":"Screen","description":"One user-facing flow inside a surface.","code":true,"derives_from":["feature","design-system","service"],"documents":{"design":{"description":"How the screen looks and behaves. Link design frames; describe what\nthe frames can't show (interactions, edge cases, copy rules).","template":"# <Screen name>\n\n## Purpose\n\n<Which features this screen serves and what the user gets done here.>\n\n## Layout\n\n## Interactions\n\n## Copy\n\n## Design frames\n\n<Links to the frames.>"},"states":{"description":"Every state the screen can be in and what moves it between them.\nInclude loading, empty and error states. Events are user actions or\nAPI results from the services this screen calls.","derives_from":["design"],"template":"# States\n\n## States\n\n| State | When | What the user sees |\n|---|---|---|\n| <state> | <condition> | <description> |\n\n## Transitions\n\n| From | Event | To |\n|---|---|---|\n| <state> | <user action or API result> | <state> |"}},"format":"dir","body":"A Screen is one user-facing flow in one app. It may serve several features,\nand one feature may appear on several screens; links show that. It is\nbuilt against the API of the service it calls."},"service":{"name":"Service","description":"One deployable backend service.","code":true,"derives_from":["feature","domain-model","architecture"],"documents":{"api":{"description":"The service's contract: every endpoint (REST) or operation (GraphQL)\nother services and apps call. This is the document screens are built\nagainst; changing it affects every node that derives from this service.\nPut machine-readable schemas (OpenAPI, GraphQL SDL) in api-extra/.","extra":true,"template":"# <Service> API\n\n<Style (REST or GraphQL), base path, authentication.>\n\n## <operation>\n\n<What it does and who calls it.>\n\n### Request\n\n| Field | Type | Required | Description |\n|---|---|---|---|\n| <field> | <type> | <yes/no> | <meaning> |\n\n### Response\n\n| Field | Type | Description |\n|---|---|---|\n| <field> | <type> | <meaning> |\n\n### Errors\n\n| Status | Code | When |\n|---|---|---|\n| <HTTP status> | <error code> | <condition> |"},"logic":{"description":"Business rules and invariants inside the service. Service-wide rules\n(idempotency, ledgers) live here once, not in every feature.","derives_from":["api"],"exposed":false,"template":"# <Service> logic\n\n## Responsibilities\n\n## Rules\n\n## Idempotency and retries"},"storage":{"description":"Every table the service owns. No other service reads or writes them.","required":false,"derives_from":["logic"],"exposed":false,"template":"# Storage\n\n## <table>\n\n### Columns\n\n| Column | Type | Null | Description |\n|---|---|---|---|\n| <column> | <type> | <yes/no> | <meaning> |\n\n### Indexes\n\n- <columns> — <why>"},"events":{"description":"Events the service emits and consumes. Emitted events are part of its\ncontract, like the API.","required":false,"derives_from":["logic"],"template":"# Events\n\n## Emits\n\n| Event | When | Payload |\n|---|---|---|\n| <EventName> | <condition> | <fields> |\n\n## Consumes\n\n| Event | From | Reaction |\n|---|---|---|\n| <EventName> | <service> | <what this service does> |"},"compliance":{"description":"Regulatory scope (PCI, GDPR, ...) and the controls that keep the service in it.","required":false,"exposed":false,"template":"# Compliance\n\n## Scope\n\n## Controls\n\n## Data retention"}},"format":"dir","body":"A Service is one deployable backend service, and the only owner of its\ncode. Service-wide rules (idempotency, ledgers, compliance scope) live here\nonce. A Service derives from the features it serves. It never derives from\nthe experience branch: screens are built against its API, not the other\nway round."},"services":{"name":"Services","description":"All backend services.","children":["service"],"documents":{"overview":{"description":"Every service with one line of responsibility. Written from the service nodes below.","template":"# Services\n\n## Services\n\n| Service | Responsibility |\n|---|---|\n| <service> | <one line> |"}},"format":"dir","body":"Groups the service nodes."},"surface":{"name":"Surface","description":"One client app.","code":true,"children":["screen"],"derives_from":["design-system","architecture"],"documents":{"shell":{"description":"What belongs to the app as a whole and to no single screen. Its code\npaths cover the shell only; screens own their own folders.","template":"# <App name> shell\n\n## Navigation\n\n## Session\n\n## Offline\n\n## Deep links"}},"format":"dir","body":"A Surface is one client app. It owns navigation, session and offline\nbehaviour. Its code paths cover the shell only."},"system":{"name":"System","description":"How it works, split by service.","children":["architecture","domain-model","services","platform"],"documents":{"overview":{"description":"A summary of the system: its services and how they talk.","template":"# System\n\n## Shape\n\n<Services, how they communicate, where data lives.>"}},"format":"dir","body":"The system branch follows the real architecture: services, shared model, platform."}},"nodes":[{"type":"screen","derives_from":["product/delivery/live-tracking","system/services/dispatch","experience/design-system"],"code":["apps/courier-mobile/src/screens/delivery-run/"],"path":"experience/courier-app/delivery-run","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/delivery/courier-assignment","system/services/dispatch","experience/design-system"],"code":["apps/courier-mobile/src/screens/job-offer/"],"path":"experience/courier-app/job-offer","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"surface","derives_from":["experience/design-system"],"code":["apps/courier-mobile/src/shell/"],"path":"experience/courier-app","notes":{},"files":["shell.md"],"extras":{}},{"type":"screen","derives_from":["product/delivery/courier-assignment","product/account/sign-in","system/services/dispatch","experience/design-system"],"code":["apps/courier-mobile/src/screens/shift/"],"path":"experience/courier-app/shift","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/account/sign-in","product/account/ratings","system/services/customer-bff","experience/design-system"],"code":["apps/customer-mobile/src/screens/account/"],"path":"experience/customer-app/account","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/ordering/cart","product/ordering/checkout","product/ordering/promo-codes","product/ordering/scheduled-orders","system/services/customer-bff","experience/design-system"],"code":["apps/customer-mobile/src/screens/cart-and-checkout/"],"path":"experience/customer-app/cart-and-checkout","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/discovery/browse","product/discovery/restaurant-page","system/services/customer-bff","experience/design-system"],"code":["apps/customer-mobile/src/screens/home-feed/"],"path":"experience/customer-app/home-feed","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"surface","derives_from":["experience/design-system"],"code":["apps/customer-mobile/src/shell/"],"path":"experience/customer-app","notes":{},"files":["shell.md"],"extras":{}},{"type":"screen","derives_from":["product/delivery/live-tracking","product/support/refunds","system/services/customer-bff","experience/design-system"],"code":["apps/customer-mobile/src/screens/order-tracking/"],"path":"experience/customer-app/order-tracking","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/discovery/search","system/services/customer-bff","experience/design-system"],"code":["apps/customer-mobile/src/screens/search/"],"path":"experience/customer-app/search","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/account/sign-in","product/account/ratings","system/services/customer-bff","experience/design-system"],"code":["apps/customer-web/src/screens/account/"],"path":"experience/customer-web/account","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/ordering/cart","product/ordering/checkout","product/ordering/promo-codes","product/ordering/scheduled-orders","system/services/customer-bff","experience/design-system"],"code":["apps/customer-web/src/screens/cart-and-checkout/"],"path":"experience/customer-web/cart-and-checkout","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/discovery/browse","product/discovery/restaurant-page","system/services/customer-bff","experience/design-system"],"code":["apps/customer-web/src/screens/home/"],"path":"experience/customer-web/home","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"surface","derives_from":["experience/design-system"],"code":["apps/customer-web/src/shell/"],"path":"experience/customer-web","notes":{},"files":["shell.md"],"extras":{}},{"type":"screen","derives_from":["product/delivery/live-tracking","system/services/customer-bff","experience/design-system"],"code":["apps/customer-web/src/screens/order-tracking/"],"path":"experience/customer-web/order-tracking","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/discovery/search","system/services/customer-bff","experience/design-system"],"code":["apps/customer-web/src/screens/search/"],"path":"experience/customer-web/search","notes":{"system/services/customer-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"design-system","code":["packages/ui/"],"path":"experience/design-system","notes":{},"files":["components.md","foundations.md"],"extras":{}},{"type":"messaging","derives_from":["product/ordering/promo-codes","product/delivery/live-tracking","product/delivery/courier-assignment","product/partner/order-acceptance","product/account/sign-in","product/support/refunds"],"code":["packages/messaging/"],"path":"experience/messaging","notes":{},"files":["templates.md"],"extras":{}},{"type":"experience","path":"experience","notes":{},"files":["overview.md"],"extras":{}},{"type":"screen","derives_from":["product/delivery/courier-assignment","system/services/dispatch","experience/design-system"],"code":["apps/ops-console/src/screens/couriers/"],"path":"experience/ops-console/couriers","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"surface","derives_from":["experience/design-system"],"code":["apps/ops-console/src/shell/"],"path":"experience/ops-console","notes":{},"files":["shell.md"],"extras":{}},{"type":"screen","derives_from":["product/partner/order-acceptance","system/services/orders","experience/design-system"],"code":["apps/ops-console/src/screens/orders/"],"path":"experience/ops-console/orders","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/partner/payouts","system/services/payments","experience/design-system"],"code":["apps/ops-console/src/screens/payouts/"],"path":"experience/ops-console/payouts","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/ordering/promo-codes","system/services/pricing","experience/design-system"],"code":["apps/ops-console/src/screens/promos/"],"path":"experience/ops-console/promos","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/support/refunds","system/services/payments","experience/design-system"],"code":["apps/ops-console/src/screens/refunds/"],"path":"experience/ops-console/refunds","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/account/sign-in","system/services/identity","experience/design-system"],"code":["apps/ops-console/src/screens/sign-in/"],"path":"experience/ops-console/sign-in","notes":{},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/partner/payouts","system/services/partner-bff","experience/design-system"],"code":["apps/partner-dashboard/src/screens/finance/"],"path":"experience/partner-dashboard/finance","notes":{"system/services/partner-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/partner/order-acceptance","product/ordering/scheduled-orders","system/services/partner-bff","experience/design-system"],"code":["apps/partner-dashboard/src/screens/live-orders/"],"path":"experience/partner-dashboard/live-orders","notes":{"system/services/partner-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/partner/menu-management","system/services/partner-bff","experience/design-system"],"code":["apps/partner-dashboard/src/screens/menu-editor/"],"path":"experience/partner-dashboard/menu-editor","notes":{"system/services/partner-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"surface","derives_from":["experience/design-system"],"code":["apps/partner-dashboard/src/shell/"],"path":"experience/partner-dashboard","notes":{},"files":["shell.md"],"extras":{}},{"type":"screen","derives_from":["product/account/ratings","system/services/partner-bff","experience/design-system"],"code":["apps/partner-dashboard/src/screens/reviews/"],"path":"experience/partner-dashboard/reviews","notes":{"system/services/partner-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"screen","derives_from":["product/account/sign-in","system/services/partner-bff","experience/design-system"],"code":["apps/partner-dashboard/src/screens/sign-in/"],"path":"experience/partner-dashboard/sign-in","notes":{"system/services/partner-bff":"API-first: built against the BFF schema"},"files":["design.md","states.md"],"extras":{}},{"type":"root","path":"","notes":{},"files":["overview.md"],"extras":{}},{"type":"product-area","path":"product/account","notes":{},"files":["overview.md"],"extras":{}},{"type":"feature","path":"product/account/ratings","notes":{},"files":["user-story.md"],"extras":{}},{"type":"feature","path":"product/account/sign-in","notes":{},"files":["user-story.md"],"extras":{}},{"type":"feature","path":"product/delivery/courier-assignment","notes":{},"files":["user-story.md"],"extras":{}},{"type":"feature","path":"product/delivery/live-tracking","notes":{},"files":["user-story.md"],"extras":{}},{"type":"product-area","path":"product/delivery","notes":{},"files":["overview.md"],"extras":{}},{"type":"feature","path":"product/discovery/browse","notes":{},"files":["user-story.md"],"extras":{}},{"type":"product-area","path":"product/discovery","notes":{},"files":["overview.md"],"extras":{}},{"type":"feature","path":"product/discovery/restaurant-page","notes":{},"files":["user-story.md"],"extras":{}},{"type":"feature","path":"product/discovery/search","notes":{},"files":["user-story.md"],"extras":{}},{"type":"glossary","path":"product/glossary","notes":{},"files":["terms.md"],"extras":{}},{"type":"product","path":"product","notes":{},"files":["overview.md"],"extras":{}},{"type":"feature","path":"product/ordering/cart","notes":{},"files":["user-story.md"],"extras":{}},{"type":"feature","derives_from":["product/glossary"],"path":"product/ordering/checkout","notes":{},"files":["rules.md","user-story.md"],"extras":{}},{"type":"product-area","path":"product/ordering","notes":{},"files":["overview.md"],"extras":{}},{"type":"feature","derives_from":["product/glossary"],"path":"product/ordering/promo-codes","notes":{},"files":["rules.md","user-story.md"],"extras":{}},{"type":"feature","derives_from":["product/glossary"],"path":"product/ordering/scheduled-orders","notes":{},"files":["rules.md","user-story.md"],"extras":{}},{"type":"feature","path":"product/partner/menu-management","notes":{},"files":["user-story.md"],"extras":{}},{"type":"product-area","path":"product/partner","notes":{},"files":["overview.md"],"extras":{}},{"type":"feature","path":"product/partner/order-acceptance","notes":{},"files":["user-story.md"],"extras":{}},{"type":"feature","derives_from":["product/glossary"],"path":"product/partner/payouts","notes":{},"files":["rules.md","user-story.md"],"extras":{}},{"type":"product-area","path":"product/support","notes":{},"files":["overview.md"],"extras":{}},{"type":"feature","derives_from":["product/glossary"],"path":"product/support/refunds","notes":{},"files":["rules.md","user-story.md"],"extras":{}},{"type":"architecture","path":"system/architecture","notes":{},"files":["context-map.md","conventions.md","decisions.md"],"extras":{}},{"type":"domain-model","derives_from":["product/glossary"],"path":"system/domain-model","notes":{},"files":["entities.md","lifecycle.md"],"extras":{}},{"type":"system","path":"system","notes":{},"files":["overview.md"],"extras":{}},{"type":"platform","derives_from":["system/architecture"],"code":["infra/"],"path":"system/platform","notes":{},"files":["infra.md"],"extras":{}},{"type":"service","derives_from":["product/discovery/browse","product/discovery/search","product/discovery/restaurant-page","product/ordering/cart","product/ordering/checkout","product/ordering/scheduled-orders","product/partner/menu-management","system/domain-model","system/architecture"],"code":["services/catalog/"],"path":"system/services/catalog","notes":{},"files":["api.md","events.md","logic.md","storage.md"],"extras":{}},{"type":"service","derives_from":["product/discovery/browse","product/discovery/search","product/discovery/restaurant-page","product/ordering/cart","product/ordering/checkout","product/ordering/promo-codes","product/ordering/scheduled-orders","product/delivery/live-tracking","product/account/sign-in","product/account/ratings","product/support/refunds","system/domain-model","system/architecture"],"code":["services/customer-bff/"],"path":"system/services/customer-bff","notes":{},"files":["api.md","logic.md"],"extras":{}},{"type":"service","derives_from":["product/discovery/browse","product/ordering/scheduled-orders","product/delivery/live-tracking","product/delivery/courier-assignment","product/partner/order-acceptance","system/domain-model","system/architecture"],"code":["services/dispatch/"],"path":"system/services/dispatch","notes":{},"files":["api.md","events.md","logic.md","storage.md"],"extras":{}},{"type":"service","derives_from":["product/ordering/checkout","product/account/sign-in","system/domain-model","system/architecture"],"code":["services/identity/"],"path":"system/services/identity","notes":{},"files":["api.md","logic.md","storage.md"],"extras":{}},{"type":"services","path":"system/services","notes":{},"files":["overview.md"],"extras":{}},{"type":"service","derives_from":["product/ordering/promo-codes","product/delivery/live-tracking","product/delivery/courier-assignment","product/partner/order-acceptance","product/account/sign-in","product/support/refunds","system/domain-model","system/architecture"],"code":["services/notifications/"],"path":"system/services/notifications","notes":{},"files":["api.md","logic.md"],"extras":{}},{"type":"service","derives_from":["product/ordering/cart","product/ordering/checkout","product/ordering/scheduled-orders","product/delivery/live-tracking","product/partner/order-acceptance","product/account/ratings","product/support/refunds","system/domain-model","system/architecture"],"code":["services/orders/"],"path":"system/services/orders","notes":{},"files":["api.md","events.md","logic.md","storage.md"],"extras":{}},{"type":"service","derives_from":["product/ordering/scheduled-orders","product/partner/menu-management","product/partner/order-acceptance","product/partner/payouts","product/account/sign-in","product/account/ratings","system/domain-model","system/architecture"],"code":["services/partner-bff/"],"path":"system/services/partner-bff","notes":{},"files":["api.md","logic.md"],"extras":{}},{"type":"service","derives_from":["product/ordering/checkout","product/partner/payouts","product/support/refunds","system/domain-model","system/architecture"],"code":["services/payments/"],"path":"system/services/payments","notes":{},"files":["api.md","compliance.md","events.md","logic.md","storage.md"],"extras":{"api":["openapi.yaml"]}},{"type":"service","derives_from":["product/discovery/restaurant-page","product/ordering/cart","product/ordering/checkout","product/ordering/promo-codes","system/domain-model","system/architecture"],"code":["services/pricing/"],"path":"system/services/pricing","notes":{},"files":["api.md","logic.md","storage.md"],"extras":{}},{"type":"service","derives_from":["product/discovery/restaurant-page","product/account/ratings","system/domain-model","system/architecture"],"code":["services/ratings/"],"path":"system/services/ratings","notes":{},"files":["api.md","logic.md","storage.md"],"extras":{}},{"type":"service","derives_from":["product/discovery/browse","product/discovery/search","product/partner/menu-management","system/domain-model","system/architecture"],"code":["services/search/"],"path":"system/services/search","notes":{},"files":["api.md","logic.md","storage.md"],"extras":{}}]}};
+var META = {
+  "example_product": { label: "example_product", blurb: "Product, experience and system, each cut along its own boundaries. Services and screens derive straight from features." }
+};
+var KIND = {
+  prod: ["product","product-area","feature","glossary","domain","product-domain","product-feature"],
+  exp:  ["experience","design-system","surface","screen","messaging","frontend","frontend-domain","frontend-slice"],
+  sys:  ["system","architecture","domain-model","services","service","platform","backend","backend-domain","backend-slice"],
+  sol:  ["solutions","solution","flows","system-flow"]
+};
+function kindOf(id) { for (var k in KIND) if (KIND[k].indexOf(id) >= 0) return k; return "root"; }
+function isFront(type) { return kindOf(type) === "exp"; }
+function isBack(type) { var k = kindOf(type); return k === "sys" || k === "sol"; }
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+var projects = Object.keys(DATA);
+var S = { p: null, view: "nodes", sel: null, rows: {}, edges: [], model: null };
+
+/* ---------- model: per project, derived node info + validation ---------- */
+function buildModel(p) {
+  var types = DATA[p].types, nodes = {}, list = DATA[p].nodes;
+  list.forEach(function (n) { nodes[n.path] = n; });
+  function parentOf(path) { if (path === "") return null; var i = path.lastIndexOf("/"); return i < 0 ? "" : path.slice(0, i); }
+  list.forEach(function (n) { n.parent = parentOf(n.path); n.kids = []; n.issues = []; n.down = []; });
+  list.forEach(function (n) { if (n.parent !== null && nodes[n.parent]) nodes[n.parent].kids.push(n.path); });
+  var issues = [];
+  function add(n, sev, msg) { n.issues.push({ sev: sev, msg: msg }); issues.push({ sev: sev, msg: msg, path: n.path }); }
+
+  list.forEach(function (n) {
+    var t = types[n.type];
+    if (!t) { add(n, "e", "unknown type " + n.type); return; }
+    if (n.parent !== null) {
+      var pn = nodes[n.parent];
+      if (!pn) add(n, "e", "parent folder has no node.yaml");
+      else if (types[pn.type] && (types[pn.type].children || []).indexOf(n.type) < 0) add(n, "e", "type " + n.type + " not allowed under " + pn.type);
+    }
+    var docs = t.documents || {};
+    Object.keys(docs).forEach(function (d) {
+      if (docs[d].required !== false && n.files.indexOf(d + ".md") < 0) add(n, "e", "missing required " + d + ".md");
+    });
+    n.files.forEach(function (f) {
+      if (!/\.md$/.test(f) || !docs[f.replace(/\.md$/, "")]) add(n, "e", f + " is not a declared document");
+    });
+    Object.keys(n.extras || {}).forEach(function (d) {
+      if (!docs[d]) add(n, "e", d + "-extra/ belongs to no declared document");
+      else if (!docs[d].extra) add(n, "e", d + "-extra/ not allowed: " + d + ".md has no extra: true");
+    });
+    (n.derives_from || []).forEach(function (l) {
+      var tn = nodes[l];
+      if (!tn) add(n, "e", "links to missing node " + l);
+      else {
+        tn.down.push(n.path);
+        if ((t.derives_from || []).indexOf(tn.type) < 0) add(n, "e", n.type + " may not derive from " + tn.type + " (" + l + ")");
+      }
+    });
+  });
+  // code paths only on types that map to code, and always on those
+  list.forEach(function (n) {
+    var t = types[n.type]; if (!t) return;
+    var has = (n.code || []).length > 0;
+    if (has && !t.code) add(n, "e", n.type + " does not map to code, but lists code paths");
+    if (!has && t.code) add(n, "e", n.type + " maps to code, but lists no code paths");
+  });
+  // dependency direction: backend-side nodes never read frontend nodes (ancestors or upstream)
+  list.forEach(function (n) {
+    if (!isBack(n.type)) return;
+    var p = n.parent;
+    while (p !== null && nodes[p]) { if (isFront(nodes[p].type)) add(n, "e", "backend node sits under frontend node " + (p || "docs/")); p = nodes[p].parent; }
+    (n.derives_from || []).forEach(function (l) { if (nodes[l] && isFront(nodes[l].type)) add(n, "e", "backend node derives from frontend node " + l); });
+  });
+  var typeIssues = [];
+  Object.keys(types).forEach(function (id) {
+    if (!isBack(id)) return;
+    (types[id].derives_from || []).forEach(function (u) { if (isFront(u)) typeIssues.push(id + " (backend) may derive from " + u + " (frontend)"); });
+    (types[id].children || []).forEach(function (c) { if (isFront(c)) typeIssues.push(id + " (backend) may contain " + c + " (frontend)"); });
+  });
+  // document dependencies inside a type: ids exist, no cycles
+  Object.keys(types).forEach(function (id) {
+    var docs = types[id].documents || {}, st = {};
+    Object.keys(docs).forEach(function (d) {
+      (docs[d].derives_from || []).forEach(function (u) { if (!docs[u]) typeIssues.push(id + "/" + d + ".md derives from unknown document " + u); });
+    });
+    function walk(d, stack) {
+      st[d] = 1; stack.push(d);
+      (docs[d].derives_from || []).forEach(function (u) {
+        if (!docs[u]) return;
+        if (st[u] === 1) typeIssues.push(id + ": document cycle " + stack.slice(stack.indexOf(u)).concat(u).join(" → "));
+        else if (!st[u]) walk(u, stack);
+      });
+      stack.pop(); st[d] = 2;
+    }
+    Object.keys(docs).forEach(function (d) { if (!st[d]) walk(d, []); });
+  });
+  typeIssues.forEach(function (msg) { issues.push({ sev: "e", msg: msg, path: null }); });
+  // link cycles
+  var state = {};
+  function dfs(path, stack) {
+    state[path] = 1; stack.push(path);
+    (nodes[path].derives_from || []).forEach(function (l) {
+      if (!nodes[l]) return;
+      if (state[l] === 1) add(nodes[path], "e", "link cycle: " + stack.slice(stack.indexOf(l)).concat(l).join(" → "));
+      else if (!state[l]) dfs(l, stack);
+    });
+    stack.pop(); state[path] = 2;
+  }
+  list.forEach(function (n) { if (!state[n.path]) dfs(n.path, []); });
+  // code ownership: same or nested paths claimed by more than one node
+  var claims = [];
+  list.forEach(function (n) { (n.code || []).forEach(function (c) { claims.push({ c: c.replace(/\/?$/, "/"), n: n }); }); });
+  var byCode = {};
+  claims.forEach(function (a) {
+    claims.forEach(function (b) {
+      if (a.n === b.n) return;
+      if (a.c === b.c || a.c.indexOf(b.c) === 0) { (byCode[a.n.path] = byCode[a.n.path] || {})[b.c] = (byCode[a.n.path][b.c] || 0) + 1; }
+    });
+  });
+  Object.keys(byCode).forEach(function (path) {
+    Object.keys(byCode[path]).forEach(function (c) {
+      var others = claims.filter(function (x) { return x.c === c && x.n.path !== path; }).length;
+      add(nodes[path], "w", "code " + c + " also claimed by " + others + " other node" + (others > 1 ? "s" : ""));
+    });
+  });
+  return { types: types, nodes: nodes, list: list, issues: issues };
+}
+
+/* ---------- ordering ---------- */
+function typeOrder(types) {
+  var order = [], seen = {};
+  function visit(id, depth) {
+    if (seen[id] || !types[id]) return;
+    seen[id] = 1; order.push({ id: id, depth: depth });
+    (types[id].children || []).forEach(function (c) { if (c !== id) visit(c, depth + 1); });
+  }
+  // start from the root node's type: any type can be the root
+  var rootNode = (DATA[S.p].nodes || []).filter(function (n) { return n.path === ""; })[0];
+  if (rootNode) visit(rootNode.type, 0);
+  Object.keys(types).forEach(function (id) { visit(id, 0); });
+  return order;
+}
+function nodeOrder(m) {
+  var order = [];
+  function visit(path, depth) {
+    var n = m.nodes[path]; if (!n) return;
+    order.push({ id: path, depth: depth });
+    var t = m.types[n.type] || {}, ch = t.children || [];
+    n.kids.slice().sort(function (a, b) {
+      // keep the order the type lists its children in, then alphabetical
+      var ta = ch.indexOf(m.nodes[a].type), tb = ch.indexOf(m.nodes[b].type);
+      return ta - tb || (a < b ? -1 : 1);
+    }).forEach(function (k) { visit(k, depth + 1); });
+  }
+  visit("", 0);
+  return order;
+}
+
+/* ---------- rendering ---------- */
+var tabsEl = document.getElementById("tabs");
+projects.forEach(function (p) {
+  var b = document.createElement("button");
+  b.setAttribute("role", "tab"); b.dataset.p = p;
+  b.textContent = (META[p] || { label: p }).label;
+  b.addEventListener("click", function () { S.p = p; store("uspec-ex-tab", p); render(); });
+  tabsEl.appendChild(b);
+});
+document.querySelectorAll("#seg button").forEach(function (b) {
+  b.addEventListener("click", function () { S.view = b.dataset.v; store("uspec-ex-view", S.view); render(); });
+});
+
+function render(selectAfter) {
+  S.sel = null;
+  var p = S.p, m = S.model = buildModel(p), types = m.types;
+  tabsEl.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.p === p ? "true" : "false"); });
+  document.querySelectorAll("#seg button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.v === S.view ? "true" : "false"); });
+  document.querySelector(".panel").classList.toggle("view-nodes", S.view === "nodes");
+  document.querySelectorAll(".only-nodes").forEach(function (e) { e.style.display = S.view === "nodes" ? "" : "none"; });
+  document.getElementById("blurb").textContent = (META[p] || {}).blurb || "";
+
+  var nTypeLinks = 0; Object.keys(types).forEach(function (id) { nTypeLinks += (types[id].derives_from || []).length; });
+  var nLinks = 0, nFiles = 0, nCode = 0;
+  m.list.forEach(function (n) { nLinks += (n.derives_from || []).length; nFiles += n.files.length + 1; if ((n.code || []).length) nCode++; });
+  var codeTypes = Object.keys(types).filter(function (id) { return types[id].code; }).length;
+  var nPaths = {}; m.list.forEach(function (n) { (n.code || []).forEach(function (c) { nPaths[c] = 1; }); });
+  document.getElementById("stats").innerHTML = S.view === "types"
+    ? "<span><b>" + Object.keys(types).length + "</b>types</span><span><b>" + codeTypes + "</b>map to code</span><span><b>" + nTypeLinks + "</b>allowed type links</span>"
+    : S.view === "code"
+    ? "<span><b>" + nCode + "</b>spec nodes with code</span><span><b>" + Object.keys(nPaths).length + "</b>code paths</span>"
+    : "<span><b>" + m.list.length + "</b>nodes</span><span><b>" + nFiles + "</b>files</span><span><b>" + nLinks + "</b>links</span><span><b>" + nCode + "</b>nodes with code</span>";
+
+  var errs = m.issues.filter(function (i) { return i.sev === "e"; }), warns = m.issues.filter(function (i) { return i.sev === "w"; });
+  var val = document.getElementById("val");
+  var isCode = S.view === "code";
+  document.getElementById("graph").parentNode.style.display = isCode ? "none" : "";
+  document.getElementById("cscroll").style.display = isCode ? "" : "none";
+  if (isCode) { val.innerHTML = ""; renderCode(selectAfter); return; }
+  if (S.view !== "nodes") val.innerHTML = "";
+  else {
+    var head = (errs.length ? '<span class="e">✗ ' + errs.length + " error" + (errs.length > 1 ? "s" : "") + "</span>" : '<span class="ok">✓ valid tree</span>') +
+      (warns.length ? ' · <span class="w">' + warns.length + " warning" + (warns.length > 1 ? "s" : "") + "</span>" : "");
+    var items = errs.concat(warns).map(function (i) {
+      if (i.path === null) return '<li class="' + i.sev + '">node types: ' + esc(i.msg) + "</li>";
+      return '<li class="' + i.sev + '"><a data-go="' + esc(i.path) + '">docs/' + esc(i.path) + "</a>: " + esc(i.msg) + "</li>";
+    }).join("");
+    val.innerHTML = '<details class="val"' + (items && errs.length ? " open" : "") + "><summary>" + head +
+      ' <span style="font-weight:400;color:var(--muted)">types, children, required documents, links, cycles, code only on code types, backend never reads frontend, code claimed twice</span></summary>' +
+      (items ? "<ul>" + items + "</ul>" : "") + "</details>";
+    val.querySelectorAll("[data-go]").forEach(function (a) { a.addEventListener("click", function () { select(a.dataset.go, true); }); });
+  }
+
+  var rows = document.getElementById("rows");
+  rows.innerHTML = ""; S.rows = {}; S.edges = [];
+  var order = S.view === "types" ? typeOrder(types) : nodeOrder(m);
+  order.forEach(function (o) {
+    var r = document.createElement("div");
+    r.tabIndex = 0; r.dataset.id = o.id; r.style.setProperty("--d", o.depth);
+    if (S.view === "types") {
+      var t = types[o.id];
+      r.className = "row k-" + kindOf(o.id);
+      var flags = "";
+      if ((t.children || []).indexOf(o.id) >= 0) flags += '<span class="flag">↻ nests</span>';
+      if (t.code) flags += '<span class="codei" title="nodes of this type list code paths">&lt;/&gt; code</span>';
+      if (!(t.children || []).length) flags += '<span class="flag dim">leaf</span>';
+      var used = m.list.filter(function (n) { return n.type === o.id; }).length;
+      flags += '<span class="flag dim">' + used + " node" + (used === 1 ? "" : "s") + "</span>";
+      r.innerHTML = '<div class="main"><span class="nm">' + esc(t.name) + '</span><span class="id">' + esc(o.id) + "</span>" + flags +
+        '<div class="docs">' + typeDocChips(t) + "</div></div>";
+    } else {
+      var n = m.nodes[o.id], tt = types[n.type] || {};
+      r.className = "row k-" + kindOf(n.type);
+      var name = o.id === "" ? "docs/" : o.id.split("/").pop() + "/";
+      var e = n.issues.some(function (i) { return i.sev === "e"; }), w = n.issues.length && !e;
+      r.innerHTML = '<div class="main"><span class="nm">' + esc(name) + '</span><span class="id">' + esc(n.type) + "</span>" +
+        ((n.code || []).length ? '<span class="codei" title="' + esc(n.code.join(", ")) + '">&lt;/&gt;</span>' : "") +
+        '<span class="docs">' + nodeDocChips(n, tt) + "</span></div>" +
+        (n.issues.length ? '<span class="issue' + (e ? " e" : "") + '"></span>' : "");
+    }
+    r.addEventListener("click", function () { select(S.sel === o.id ? null : o.id); });
+    r.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(S.sel === o.id ? null : o.id); } });
+    rows.appendChild(r); S.rows[o.id] = r;
+  });
+
+  if (S.view === "types") {
+    Object.keys(types).forEach(function (id) {
+      (types[id].derives_from || []).forEach(function (up) { if (types[up]) S.edges.push({ from: id, to: up }); });
+    });
+  } else {
+    m.list.forEach(function (n) {
+      (n.derives_from || []).forEach(function (l) { if (m.nodes[l]) S.edges.push({ from: n.path, to: l }); });
+    });
+  }
+  document.getElementById("graph").style.setProperty("--gutter", S.view === "nodes" ? "260px" : "220px");
+  draw();
+  select(selectAfter || null);
+}
+
+function typeDocChips(t) {
+  return Object.keys(t.documents || {}).map(function (d) {
+    return '<span class="doc' + (t.documents[d].required === false ? " opt" : "") + '">' + esc(d) + ".md</span>";
+  }).join("");
+}
+function nodeDocChips(n, t) {
+  var docs = t.documents || {}, out = [];
+  Object.keys(docs).forEach(function (d) {
+    var has = n.files.indexOf(d + ".md") >= 0;
+    if (has) out.push('<span class="doc' + (docs[d].required === false ? " opt" : "") + '">' + esc(d) + ".md</span>");
+    else if (docs[d].required !== false) out.push('<span class="doc miss" title="missing">' + esc(d) + ".md</span>");
+  });
+  n.files.forEach(function (f) {
+    if (!docs[f.replace(/\.md$/, "")] || !/\.md$/.test(f)) out.push('<span class="doc miss" title="not a declared document">' + esc(f) + "</span>");
+  });
+  Object.keys(n.extras || {}).forEach(function (d) {
+    (n.extras[d].length ? n.extras[d] : [""]).forEach(function (f) { out.push('<span class="doc sup">' + esc(d) + "-extra/" + esc(f) + "</span>"); });
+  });
+  return out.join("");
+}
+
+function draw() {
+  var graph = document.getElementById("graph"), svg = document.getElementById("arcs");
+  var gw = graph.getBoundingClientRect().width;
+  var rowsW = document.getElementById("rows").getBoundingClientRect().width;
+  svg.setAttribute("viewBox", "0 0 " + gw + " " + graph.scrollHeight);
+  svg.innerHTML = "";
+  var NS = "http://www.w3.org/2000/svg";
+  var x0 = rowsW + 6, maxBulge = gw - rowsW - 16;
+  function y(id) { var r = S.rows[id]; return r ? r.offsetTop + Math.min(14, r.offsetHeight / 2) : 0; }
+  S.edges.forEach(function (e) { e.span = Math.abs(y(e.from) - y(e.to)); });
+  var maxSpan = Math.max.apply(null, S.edges.map(function (e) { return e.span; }).concat([1]));
+  S.edges.forEach(function (e) {
+    var y1 = y(e.from), y2 = y(e.to), path;
+    if (e.from === e.to) {
+      path = "M" + x0 + "," + (y1 - 6) + " C" + (x0 + 28) + "," + (y1 - 16) + " " + (x0 + 28) + "," + (y1 + 16) + " " + x0 + "," + (y1 + 6);
+    } else {
+      var b = 16 + (maxBulge - 16) * Math.sqrt(e.span / maxSpan);
+      path = "M" + x0 + "," + y1 + " C" + (x0 + b) + "," + y1 + " " + (x0 + b) + "," + y2 + " " + x0 + "," + y2;
+    }
+    e.el = document.createElementNS(NS, "path");
+    e.el.setAttribute("d", path);
+    e.el.setAttribute("class", "arc" + (e.from === e.to ? " self" : ""));
+    svg.appendChild(e.el);
+    e.dot = document.createElementNS(NS, "circle");
+    e.dot.setAttribute("cx", x0); e.dot.setAttribute("cy", e.from === e.to ? y1 + 6 : y2); e.dot.setAttribute("r", 2.6);
+    e.dot.setAttribute("class", "dot");
+    svg.appendChild(e.dot);
+  });
+}
+
+function typeChip(id) {
+  var t = S.model.types[id];
+  return '<span class="chip k-' + kindOf(id) + '" data-type="' + esc(id) + '" title="' + esc(t ? t.description : "unknown type") + '">' + esc(id) + "</span>";
+}
+function nodeLink(path, note, why) {
+  var n = S.model.nodes[path];
+  return "<li>" + (why ? '<span class="why">' + why + "</span>" : "") +
+    (n ? '<a data-node="' + esc(path) + '">' + esc(path === "" ? "docs/" : path) + "</a>" : '<span class="no">' + esc(path) + "</span>") +
+    (n ? '<span class="note">' + esc(n.type) + "</span>" : '<span class="note">missing</span>') +
+    (note ? '<span class="note">— ' + esc(note) + "</span>" : "") + "</li>";
+}
+
+function select(id, scroll) {
+  S.sel = id;
+  var graph = document.getElementById("graph"), m = S.model;
+  graph.classList.toggle("focus", !!id);
+  Object.keys(S.rows).forEach(function (k) { S.rows[k].classList.remove("on", "sel", "ctx"); });
+  S.edges.forEach(function (e) {
+    var up = id !== null && e.from === id, down = id !== null && e.to === id && !up;
+    e.el.classList.toggle("up", up); e.el.classList.toggle("down", down);
+    e.dot.classList.toggle("up", up); e.dot.classList.toggle("down", down);
+    if (up) S.rows[e.to].classList.add("on");
+    if (down) S.rows[e.from].classList.add("on");
+  });
+  var det = document.getElementById("detail");
+  if (id === null) {
+    det.innerHTML = S.view === "types"
+      ? '<p class="empty">Select a type to see its documents, where it sits in the tree, and which types it may link to.</p><p class="empty" style="margin:0">Orange arcs go upstream, blue arcs downstream.</p>'
+      : '<p class="empty">Select a node to see its files, code paths, links and agent context.</p><p class="empty" style="margin:0">Orange arcs go upstream (what it derives from), blue arcs downstream (what derives from it). Ancestors stay half-lit: they are part of the context too.</p>';
+    return;
+  }
+  S.rows[id].classList.add("sel", "on");
+  if (S.view === "types") typeDetail(id, det); else nodeDetail(id, det);
+  det.querySelectorAll("[data-type]").forEach(function (c) {
+    c.addEventListener("click", function () { if (!m.types[c.dataset.type]) return; S.view = "types"; store("uspec-ex-view", "types"); render(c.dataset.type); });
+  });
+  det.querySelectorAll("[data-node]").forEach(function (c) {
+    c.addEventListener("click", function () { select(c.dataset.node, true); });
+  });
+  det.querySelectorAll("[data-code]").forEach(function (c) {
+    c.addEventListener("click", function () { S.view = "code"; store("uspec-ex-view", "code"); render("c:" + normDir(c.dataset.code)); });
+  });
+  if (scroll) S.rows[id].scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function typeDetail(id, det) {
+  var m = S.model, types = m.types, t = types[id];
+  var parents = Object.keys(types).filter(function (k) { return k !== id && (types[k].children || []).indexOf(id) >= 0; });
+  var down = S.edges.filter(function (e) { return e.to === id && e.from !== id; }).map(function (e) { return e.from; });
+  var docs = Object.keys(t.documents || {}).map(function (d) {
+    var dd = t.documents[d];
+    return '<li><span class="mono">' + esc(d) + ".md</span>" + (dd.required === false ? '<span class="tag-opt">optional</span>' : "") +
+      (dd.exposed === false ? '<span class="tag-opt" style="color:var(--sys)">internal</span>' : "") +
+      (dd.extra ? '<span class="tag-opt">+ ' + esc(d) + "-extra/</span>" : "") +
+      ((dd.derives_from || []).length ? '<span class="tag-opt" style="color:var(--accent);text-transform:none;letter-spacing:0">← ' + esc(dd.derives_from.join(", ")) + "</span>" : "") +
+      "<small>" + esc(dd.description || "") + "</small>" +
+      (dd.template ? '<details class="tpl"><summary>template</summary><pre class="body">' + esc(dd.template) + "</pre></details>" : "") + "</li>";
+  }).join("");
+  var used = m.list.filter(function (n) { return n.type === id; });
+  var where = t.format === "dir"
+    ? ".uspec/node-types/" + id + "/ — node-type.yaml + " + Object.keys(t.documents || {}).map(function (d) { return d + ".md"; }).join(", ")
+    : ".uspec/node-types/" + id + ".md";
+  function list(a, none) { return a.length ? a.map(typeChip).join("") : '<span style="color:var(--muted)">' + none + "</span>"; }
+  det.innerHTML =
+    "<h3>" + esc(t.name) + ' <span class="mono" style="color:var(--muted);font-weight:400">' + esc(id) + "</span></h3>" +
+    '<div class="desc">' + esc(t.description) + "</div>" +
+    '<div class="mono" style="font-size:11px;color:var(--muted);word-break:break-all">' + esc(where) + "</div><dl>" +
+    '<dt>Documents</dt><dd><ul class="doclist">' + docs + "</ul></dd>" +
+    "<dt>Parent types</dt><dd>" + list(parents, "none") + "</dd>" +
+    "<dt>Children</dt><dd>" + list(t.children || [], "leaf") + "</dd>" +
+    "<dt>Code</dt><dd>" + (t.code ? '<span class="code">code: true</span> — every node of this type lists the code paths it describes' : '<span style="color:var(--muted)">does not map to code; nodes list no code paths</span>') + "</dd>" +
+    '<dt style="color:var(--accent)">May derive from ↑</dt><dd>' + list(t.derives_from || [], "nothing") + "</dd>" +
+    '<dt style="color:var(--sys)">Derived by ↓</dt><dd>' + list(down, "nothing") + "</dd>" +
+    "<dt>Nodes of this type (" + used.length + ')</dt><dd><ul class="plist">' +
+      (used.length ? used.map(function (n) { return '<li><a data-node-switch="' + esc(n.path) + '">' + esc(n.path || "docs/") + "</a></li>"; }).join("") : '<li class="note">none</li>') + "</ul></dd>" +
+    "<dt>" + (t.format === "dir" ? "Instructions" : "Body") + '</dt><dd><pre class="body">' + esc(t.body || "") + "</pre></dd></dl>";
+  det.querySelectorAll("[data-node-switch]").forEach(function (a) {
+    a.addEventListener("click", function () { S.view = "nodes"; store("uspec-ex-view", "nodes"); render(a.dataset.nodeSwitch); S.rows[a.dataset.nodeSwitch].scrollIntoView({ behavior: "smooth", block: "center" }); });
+  });
+}
+
+function nodeDetail(id, det) {
+  var m = S.model, n = m.nodes[id], t = m.types[n.type] || {};
+  // context = the node + its ancestors + its upstream nodes
+  var anc = [], p = n.parent;
+  while (p !== null && m.nodes[p]) { anc.push(p); p = m.nodes[p].parent; }
+  anc.forEach(function (a) { S.rows[a] && S.rows[a].classList.add("ctx"); });
+  var up = (n.derives_from || []);
+  var docs = t.documents || {};
+  var files = n.files.map(function (f) {
+    var d = docs[f.replace(/\.md$/, "")];
+    var extra = (n.extras || {})[f.replace(/\.md$/, "")] || [];
+    return '<li><span class="mono">' + esc(f) + "</span>" + (d ? (d.required === false ? '<span class="tag-opt">optional</span>' : "") + (d.exposed === false ? '<span class="tag-opt">internal</span>' : "") + "<small>" + esc(d.description) + "</small>" : '<span class="tag-opt no">not declared</span>') +
+      extra.map(function (x) { return '<small class="mono">└ ' + esc(f.replace(/\.md$/, "")) + "-extra/" + esc(x) + "</small>"; }).join("") + "</li>";
+  });
+  Object.keys(docs).forEach(function (d) {
+    if (docs[d].required !== false && n.files.indexOf(d + ".md") < 0) files.push('<li><span class="mono no">' + esc(d) + '.md</span><span class="tag-opt">missing</span></li>');
+  });
+  var ctxCount = 1 + anc.length + up.length;
+  det.innerHTML =
+    "<h3>docs/" + esc(id) + (id ? "/" : "") + "</h3>" +
+    '<div class="desc">' + typeChip(n.type) + " " + esc(t.description || "") + "</div>" +
+    (n.issues.length ? '<ul class="plist issues">' + n.issues.map(function (i) { return '<li class="' + i.sev + '">' + (i.sev === "e" ? "✗ " : "⚠ ") + esc(i.msg) + "</li>"; }).join("") + "</ul>" : "") +
+    "<dl>" +
+    '<dt>Files</dt><dd><ul class="doclist"><li><span class="mono">node.yaml</span><small>type, links, code paths</small></li>' + files.join("") + "</ul></dd>" +
+    "<dt>Code</dt><dd>" + ((n.code || []).length ? '<ul class="plist">' + n.code.map(function (c) { return '<li class="code"><a data-code="' + esc(c) + '" style="color:var(--sys)">' + esc(c) + "</a>" + (n.notes[c] ? '<span class="note">— ' + esc(n.notes[c]) + "</span>" : "") + "</li>"; }).join("") + "</ul>" : '<span style="color:var(--muted)">' + (t.code ? "none (missing)" : "none — this type does not map to code") + "</span>") + "</dd>" +
+    '<dt style="color:var(--accent)">Derives from ↑ (' + up.length + ')</dt><dd><ul class="plist">' + (up.length ? up.map(function (l) { return nodeLink(l, n.notes[l]); }).join("") : '<li class="note">nothing</li>') + "</ul></dd>" +
+    '<dt style="color:var(--sys)">Derived by ↓ (' + n.down.length + ')</dt><dd><ul class="plist">' + (n.down.length ? n.down.map(function (l) { return nodeLink(l); }).join("") : '<li class="note">nothing</li>') + "</ul></dd>" +
+    "<dt>Agent context (" + ctxCount + ' nodes)</dt><dd><ul class="plist">' +
+      nodeLink(id, null, "self") + anc.map(function (a) { return nodeLink(a, null, "ancestor"); }).join("") + up.map(function (l) { return nodeLink(l, null, "upstream"); }).join("") +
+    "</ul></dd>" +
+    (n.kids.length ? "<dt>Children (" + n.kids.length + ')</dt><dd><ul class="plist">' + n.kids.map(function (k) { return nodeLink(k); }).join("") + "</ul></dd>" : "") +
+    "</dl>";
+}
+
+/* ---------- code view: spec node → code path, and back ---------- */
+function normDir(c) { return c.replace(/\/?$/, "/"); }
+function cmpDir(a, b) {
+  var x = a.split("/"), y = b.split("/");
+  for (var i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return x.length - y.length;
+}
+function ctxOf(path) {
+  var m = S.model, n = m.nodes[path], out = [{ p: path, why: "self" }], p = n.parent;
+  while (p !== null && m.nodes[p]) { out.push({ p: p, why: "ancestor" }); p = m.nodes[p].parent; }
+  (n.derives_from || []).forEach(function (l) { out.push({ p: l, why: "upstream" }); });
+  return out;
+}
+var C = { sRows: {}, cRows: {}, links: [], owners: {} };
+function renderCode(selectAfter) {
+  var m = S.model;
+  C = { sRows: {}, cRows: {}, links: [], owners: {} };
+  m.list.forEach(function (n) { (n.code || []).forEach(function (c) { var d = normDir(c); (C.owners[d] = C.owners[d] || []).push(n.path); }); });
+  var dirs = {};
+  Object.keys(C.owners).forEach(function (d) {
+    var parts = d.split("/").filter(Boolean);
+    for (var i = 1; i <= parts.length; i++) dirs[parts.slice(0, i).join("/") + "/"] = 1;
+  });
+  function ownedAncestor(d) {
+    var parts = d.split("/").filter(Boolean);
+    for (var i = parts.length - 1; i >= 1; i--) { var a = parts.slice(0, i).join("/") + "/"; if (C.owners[a]) return a; }
+    return null;
+  }
+  C.ownedAncestor = ownedAncestor;
+  var srows = document.getElementById("srows"), crows = document.getElementById("crows");
+  srows.innerHTML = ""; crows.innerHTML = "";
+  nodeOrder(m).forEach(function (o) {
+    var n = m.nodes[o.id]; if (!(n.code || []).length) return;
+    var r = document.createElement("div");
+    r.className = "row k-" + kindOf(n.type); r.tabIndex = 0; r.style.setProperty("--d", 0);
+    var i = o.id.lastIndexOf("/");
+    r.innerHTML = '<div class="main"><span class="pre">' + esc(i < 0 ? "" : o.id.slice(0, i + 1)) + '</span><span class="nm">' + esc(o.id.slice(i + 1)) + '</span><span class="id">' + esc(n.type) + "</span></div>" +
+      (n.issues.some(function (x) { return /code/.test(x.msg); }) ? '<span class="issue"></span>' : "");
+    bindRow(r, "s:" + o.id);
+    srows.appendChild(r); C.sRows[o.id] = r;
+  });
+  Object.keys(dirs).sort(cmpDir).forEach(function (d) {
+    var parts = d.split("/").filter(Boolean), own = C.owners[d] || [];
+    var multi = own.length > 1 || (own.length && ownedAncestor(d));
+    var r = document.createElement("div");
+    r.className = "row crow" + (own.length ? " owned" : "") + (multi ? " multi" : ""); r.tabIndex = 0;
+    r.style.setProperty("--d", parts.length - 1);
+    r.innerHTML = '<div class="main"><span class="nm">' + esc(parts[parts.length - 1]) + "/</span>" +
+      (own.length > 1 ? '<span class="cnt">' + own.length + " spec nodes</span>" : multi ? '<span class="cnt">nested owner</span>' : "") + "</div>";
+    bindRow(r, "c:" + d);
+    crows.appendChild(r); C.cRows[d] = r;
+  });
+  m.list.forEach(function (n) { (n.code || []).forEach(function (c) { C.links.push({ s: n.path, c: normDir(c) }); }); });
+  drawCode();
+  codeSelect(selectAfter || null, !!selectAfter);
+}
+function bindRow(r, key) {
+  r.addEventListener("click", function () { codeSelect(S.sel === key ? null : key); });
+  r.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); codeSelect(S.sel === key ? null : key); } });
+}
+function drawCode() {
+  var g = document.getElementById("cgraph"), svg = document.getElementById("clinks"), gr = g.getBoundingClientRect();
+  svg.setAttribute("viewBox", "0 0 " + gr.width + " " + g.scrollHeight);
+  svg.innerHTML = "";
+  C.links.forEach(function (l) {
+    var a = C.sRows[l.s].getBoundingClientRect(), b = C.cRows[l.c].getBoundingClientRect();
+    var x1 = a.right - gr.left, y1 = a.top - gr.top + Math.min(13, a.height / 2);
+    var x2 = b.left - gr.left, y2 = b.top - gr.top + Math.min(13, b.height / 2), mx = (x1 + x2) / 2;
+    l.el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    l.el.setAttribute("d", "M" + x1 + "," + y1 + " C" + mx + "," + y1 + " " + mx + "," + y2 + " " + x2 + "," + y2);
+    if (C.cRows[l.c].classList.contains("multi")) l.el.setAttribute("class", "multi");
+    svg.appendChild(l.el);
+  });
+}
+function codeSelect(key, scroll) {
+  S.sel = key;
+  var g = document.getElementById("cgraph"), m = S.model, det = document.getElementById("detail");
+  g.classList.toggle("focus", !!key);
+  [C.sRows, C.cRows].forEach(function (rs) { Object.keys(rs).forEach(function (k) { rs[k].classList.remove("on", "sel"); }); });
+  C.links.forEach(function (l) { l.el.classList.remove("on"); });
+  if (!key) {
+    det.innerHTML = '<p class="empty">Left: spec nodes whose type maps to code. Right: the code paths they list in <code>node.yaml</code>. Only the spec points at code; code has no back-references.</p>' +
+      '<p class="empty" style="margin:0">Select a spec node to see the code it describes, or a code folder to see which spec describes it and what an agent reads before changing it. Amber means a folder is claimed by more than one node.</p>';
+    return;
+  }
+  var kind = key.slice(0, 2), id = key.slice(2), row;
+  function li(p, why) { return nodeLink(p, null, why).replace("data-node=", "data-snode="); }
+  if (kind === "s:") {
+    row = C.sRows[id]; row.classList.add("sel", "on");
+    var n = m.nodes[id], dirsOn = [];
+    C.links.forEach(function (l) {
+      if (l.s !== id) return;
+      l.el.classList.add("on"); dirsOn.push(l.c);
+      Object.keys(C.cRows).forEach(function (d) { if (d.indexOf(l.c) === 0) C.cRows[d].classList.add("on"); });
+    });
+    var others = {};
+    dirsOn.forEach(function (d) { (C.owners[d] || []).forEach(function (o) { if (o !== id) others[o] = 1; }); });
+    det.innerHTML = "<h3>docs/" + esc(id) + "/</h3>" + '<div class="desc">' + typeChip(n.type) + " " + esc((m.types[n.type] || {}).description || "") + "</div><dl>" +
+      '<dt>Describes code</dt><dd><ul class="plist">' + dirsOn.map(function (d) { return '<li><a data-cdir="' + esc(d) + '" style="color:var(--sys)">' + esc(d) + "</a></li>"; }).join("") + "</ul></dd>" +
+      (Object.keys(others).length ? '<dt style="color:var(--warn)">Same code also claimed by</dt><dd><ul class="plist">' + Object.keys(others).map(function (o) { return li(o); }).join("") + "</ul></dd>" : "") +
+      "<dt>Spec an agent reads to implement it</dt><dd><ul class=\"plist\">" + ctxOf(id).map(function (c) { return li(c.p, c.why); }).join("") + "</ul></dd></dl>";
+  } else {
+    row = C.cRows[id]; row.classList.add("sel", "on");
+    var exact = C.owners[id] || [], anc = C.ownedAncestor(id), cover = exact.length ? exact : (anc ? C.owners[anc] : []);
+    var inside = [];
+    Object.keys(C.owners).forEach(function (d) { if (d !== id && d.indexOf(id) === 0) C.owners[d].forEach(function (o) { inside.push({ o: o, d: d }); }); });
+    C.links.forEach(function (l) {
+      var hit = cover.indexOf(l.s) >= 0 && (l.c === id || l.c === anc) || (l.c !== id && l.c.indexOf(id) === 0);
+      if (hit) { l.el.classList.add("on"); C.sRows[l.s].classList.add("on"); C.cRows[l.c].classList.add("on"); }
+    });
+    var ctx = [], seen = {};
+    cover.forEach(function (o) { ctxOf(o).forEach(function (c) { if (!seen[c.p]) { seen[c.p] = 1; ctx.push(c); } }); });
+    det.innerHTML = '<h3 class="mono" style="font-size:0.95rem">' + esc(id) + "</h3><dl>" +
+      (cover.length
+        ? '<dt' + (cover.length > 1 ? ' style="color:var(--warn)"' : "") + ">" + (exact.length ? "Described by" : "Covered by (via " + esc(anc) + ")") + " (" + cover.length + ')</dt><dd><ul class="plist">' + cover.map(function (o) { return li(o); }).join("") + "</ul>" +
+          (cover.length > 1 ? '<p class="warn" style="color:var(--warn);font-size:0.84rem;margin:6px 0 0">More than one node describes this code, so no single spec owns it.</p>' : "") + "</dd>"
+        : "<dt>Described by</dt><dd><span style=\"color:var(--muted)\">no spec node — only a folder on the way to one</span></dd>") +
+      (inside.length ? '<dt>Folders inside it with their own spec</dt><dd><ul class="plist">' + inside.map(function (x) { return li(x.o, x.d.slice(id.length)); }).join("") + "</ul></dd>" : "") +
+      (ctx.length ? "<dt>To change this code, an agent reads (" + ctx.length + ')</dt><dd><ul class="plist">' + ctx.map(function (c) { return li(c.p, c.why); }).join("") + "</ul></dd>" : "") +
+      "</dl>";
+  }
+  det.querySelectorAll("[data-snode]").forEach(function (a) {
+    a.addEventListener("click", function () {
+      var p = a.dataset.snode;
+      if (C.sRows[p]) codeSelect("s:" + p, true);
+      else { S.view = "nodes"; store("uspec-ex-view", "nodes"); render(p); S.rows[p].scrollIntoView({ behavior: "smooth", block: "center" }); }
+    });
+  });
+  det.querySelectorAll("[data-cdir]").forEach(function (a) { a.addEventListener("click", function () { codeSelect("c:" + a.dataset.cdir, true); }); });
+  det.querySelectorAll("[data-type]").forEach(function (c) {
+    c.addEventListener("click", function () { S.view = "types"; store("uspec-ex-view", "types"); render(c.dataset.type); });
+  });
+  if (scroll && row) row.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+S.p = load("uspec-ex-tab"); if (!DATA[S.p]) S.p = projects[projects.length - 1];
+S.view = load("uspec-ex-view"); if (["types", "nodes", "code"].indexOf(S.view) < 0) S.view = "nodes";
+render();
+var rt;
+window.addEventListener("resize", function () {
+  clearTimeout(rt);
+  rt = setTimeout(function () { if (S.view === "code") { drawCode(); codeSelect(S.sel); } else { draw(); select(S.sel); } }, 100);
+});
+</script>
+</body>
+</html>
