@@ -1,6 +1,6 @@
 # uspec — Product Overview
 
-uspec is a specification method for building products with AI agents, plus the tooling for it. A product is described as a **tree of spec nodes**. The spec is the **source of truth**: **narrowly focused agents** write each part of it, and code is generated from it, never the other way round. The one exception is [onboarding an existing codebase](#onboarding-existing-codebases), where the first tree is built from code.
+uspec is a specification method for building products with AI agents, plus the tooling for it. A product is described as a **tree of spec nodes**. The spec is the **source of truth**: **narrowly focused agents** write each part of it, and code is generated from it, never the other way round. There are two exceptions, where spec is written from code: [onboarding an existing codebase](#onboarding-existing-codebases), where the first tree is built from code, and [experiments](workflow.md#experiments), where code tried out directly is kept by turning it into a spec change.
 
 The first release is a set of **skills for Claude Code and Codex** plus a **CLI** (similar in spirit to OpenSpec) that scaffolds, validates and navigates the spec. It is for developers and small teams who build mainly with AI agents and want product intent, architecture and design versioned next to the code.
 
@@ -60,7 +60,7 @@ Two refinements, both declared in the node type:
 
 ### Context
 
-An agent writing a document reads the node's ancestors, the exposed documents of its upstream nodes, and the documents in the same node that its document derives from. An agent implementing a node reads all of the node's documents plus the same ancestors and upstream documents.
+An agent writing a document reads the node's ancestors, the exposed documents of its upstream nodes, and the documents in the same node that its document derives from. An agent implementing a node reads all of the node's documents plus the same ancestors and upstream documents. Both also get the type's instructions and, during a change, the change's description. `uspec context` prints exactly this ([CLI](cli.md#context)).
 
 Siblings, other branches and downstream nodes are not given unless linked. The agent can read more, but if it keeps needing something outside its context, a link is missing.
 
@@ -70,7 +70,9 @@ Only types marked `code: true` describe code (in the example: surfaces, screens,
 
 ## Agents
 
-Each agent run has **one responsibility**: one document of one node (`user-story.md` for checkout, `api.md` for payments), or the code of one node. There are no separately defined agents: the document's template and the type's instructions tell the agent what to write. Narrow scope keeps context small, output predictable and responsibility clear.
+Each agent run that writes has **one responsibility**: one document of one node (`user-story.md` for checkout, `api.md` for payments), or the code of one node. There are no separately defined agents: the document's template and the type's instructions tell the agent what to write. Narrow scope keeps context small, output predictable and responsibility clear.
+
+Deciding whether a document is affected by a change is cheaper than writing it, so it is done in batches: one triage agent reads the change and a batch of candidate documents, and marks each one affected or not, with a reason. Only affected documents get a writer. See [workflow.md](workflow.md#2-change-the-product).
 
 ## Workflow
 
@@ -79,22 +81,21 @@ Each agent run has **one responsibility**: one document of one node (`user-story
 3. **Then change the code** of the nodes that list it.
 4. **Verify** the code against the spec it came from.
 
-If code and spec disagree, the code is a bug, unless the spec is changed explicitly first. There is no proposal / apply / archive flow: changes are made directly in the tree.
-
-> **TODO:** how a change moves through the tree in detail (document dependencies, exposed documents, stopping when nothing needs to change).
+If code and spec disagree, the code is a bug, unless the spec is changed explicitly first. Code that is merged always matches the spec. There is no proposal / apply / archive flow: changes are made directly in the tree. See [workflow.md](workflow.md) for how a user starts a product and how a change moves through the tree.
 
 ## Repository layout
 
 ```
 .uspec/
 ├─ config.yaml     project configuration
-└─ node-types/     one directory per type: node-type.yaml + a template per document
+├─ node-types/     one directory per type: node-type.yaml + a template per document
+└─ changes/        open changes in progress, committed with the work
 docs/              the spec tree (location set in config.yaml)
 ```
 
 ## Onboarding existing codebases
 
-> **TODO:** how to build the first spec tree for a large existing codebase. This is a separate process from day-to-day work.
+A separate process from day-to-day work; see [workflow.md](workflow.md#4-onboard-an-existing-codebase).
 
 ## Success criteria
 
