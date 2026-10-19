@@ -32,12 +32,14 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly sub: vscode.Disposable;
   private contexts = new Map<Mode, Promise<ContextJson>>();
+  private followedFile?: vscode.Uri;
   target?: NodeTarget;
 
   constructor(private readonly manager: ProjectManager) {
     this.sub = manager.onDidChange(() => {
       this.contexts.clear();
-      if (this.target && !this.target.p.nodes.has(this.target.node)) this.target = undefined;
+      if (this.followedFile) this.target = this.fileTarget(this.followedFile);
+      else if (this.target && (!manager.projects.includes(this.target.p) || !this.target.p.nodes.has(this.target.node))) this.target = undefined;
       this.emitter.fire(undefined);
     });
   }
@@ -48,11 +50,25 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
   }
 
   setTarget(t: NodeTarget | undefined): void {
+    this.followedFile = undefined;
     if (t && this.target && t.p === this.target.p && t.node === this.target.node && t.doc === this.target.doc) return;
     if (!t && !this.target) return;
     this.target = t;
     this.contexts.clear();
     this.emitter.fire(undefined);
+  }
+
+  /** Re-evaluate ownership on model changes as well as editor changes. */
+  followFile(uri: vscode.Uri): void {
+    this.setTarget(this.fileTarget(uri));
+    this.followedFile = uri;
+  }
+
+  private fileTarget(uri: vscode.Uri): NodeTarget | undefined {
+    const p = this.manager.projectFor(uri);
+    const t = p?.target(uri.fsPath);
+    return p && t && p.nodes.has(t.node) && (t.code || t.spec?.kind !== 'other')
+      ? { p, node: t.node, doc: t.code ? undefined : t.doc } : undefined;
   }
 
   /** The `uspec context` JSON for the target, as the Node view shows it. */

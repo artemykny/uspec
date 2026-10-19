@@ -8,7 +8,10 @@ import type { UspecApi } from '../../extension';
 import type { Project } from '../../projects';
 import type { ChangeEl } from '../../views/changesView';
 import type { SpecEl } from '../../views/specTree';
+import { renderOverview, NodeWindow } from '../../views/nodeWindow';
+import { NodeViewProvider } from '../../views/nodeView';
 import { changeStage } from '../../views/stateWindow';
+import { Decorations } from '../../decorations';
 
 const work = process.env.USPEC_TEST_WORKSPACE!;
 const file = (rel: string) => path.join(work, ...rel.split('/'));
@@ -64,8 +67,154 @@ describe('uspec extension', () => {
     const kids = api.specTree.getChildren(payments).map((k) => (k.kind === 'doc' ? `${k.doc}.md` : k.kind));
     assert.deepStrictEqual(kids, ['api.md', 'logic.md', 'storage.md', 'events.md', 'compliance.md']);
     const item = api.specTree.getTreeItem(payments);
-    assert.strictEqual(item.description, 'service');
+    assert.strictEqual(item.description, 'service · </>');
+    assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'symbol-namespace');
     assert.match(String(item.contextValue), /^uspec\.node;code;child/);
+  });
+
+  it('renders type names and opens wrapped type/template actions', async () => {
+    const types = api.specTree.getChildren({ kind: 'root', branch: 'types' });
+    const service = types.find(e => api.specTree.getTreeItem(e).label === 'Service')!;
+    const item = api.specTree.getTreeItem(service);
+    assert.strictEqual(item.description, 'service · </>');
+    assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'symbol-class');
+    assert.ok((item.tooltip as vscode.MarkdownString).value.includes('.uspec/node-types/service/node-type.yaml'));
+    await vscode.commands.executeCommand('uspec.type.open', service);
+    assert.ok(vscode.window.activeTextEditor?.document.uri.fsPath.endsWith('service/node-type.yaml'));
+    const logic = api.specTree.getChildren(service).find(e => api.specTree.getTreeItem(e).label === 'logic.md')!;
+    assert.match(String(api.specTree.getTreeItem(logic).description), /internal/);
+    await vscode.commands.executeCommand('uspec.type.open', logic);
+    assert.ok(vscode.window.activeTextEditor?.document.uri.fsPath.endsWith('service/logic.md'));
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../package.json'), 'utf8'));
+    const menus = manifest.contributes.menus['view/item/context'];
+    for (const command of ['uspec.type.open', 'uspec.node.openYaml', 'uspec.context.show']) {
+      assert.ok(menus.some((m: any) => m.command === command && m.group.startsWith('inline')));
+      assert.ok(menus.some((m: any) => m.command === command && !m.group.startsWith('inline')));
+    }
+  });
+
+  it('retains document order, missing files, extra folders and themed state symbols', () => {
+    const node = 'system/services/payments';
+    const info = p.nodes.get(node)!;
+    const documents = info.documents;
+    const issues = p.issues;
+    const decorations = new Decorations(api.manager);
+    try {
+      const apiDoc: SpecEl = { kind: 'doc', p, node, doc: 'api' };
+      const [extra] = api.specTree.getChildren(apiDoc);
+      assert.strictEqual((api.specTree.getTreeItem(extra).iconPath as vscode.ThemeIcon).id, 'folder');
+      assert.match(String(api.specTree.getTreeItem(extra).tooltip), /docs\/system\/services\/payments\/api-extra/);
+      const [file] = api.specTree.getChildren(extra);
+      assert.strictEqual((api.specTree.getTreeItem(file).iconPath as vscode.ThemeIcon).id, 'file');
+      info.documents = documents.filter(d => d !== 'api');
+      const [missing] = api.specTree.getChildren({ kind: 'node', p, node });
+      assert.strictEqual(api.specTree.getTreeItem(missing).contextValue, 'uspec.missingDoc');
+      assert.strictEqual(api.specTree.getTreeItem(missing).command, undefined);
+      p.issues = [{ path: p.nodeDir(node), message: 'missing required document api.md' }];
+      const icon = api.specTree.getTreeItem({ kind: 'node', p, node }).iconPath as vscode.ThemeIcon;
+      assert.strictEqual(icon.id, 'error');
+      assert.deepStrictEqual(icon.color, new vscode.ThemeColor('list.errorForeground'));
+      p.drift.set(node, 'uncommitted code changes without a spec change');
+      api.manager.notify(p);
+      const badge = decorations.provideFileDecoration(p.uriOf(p.nodeDir(node)))!;
+      assert.strictEqual(badge.badge, 'D');
+      assert.deepStrictEqual(badge.color, new vscode.ThemeColor('list.warningForeground'));
+    } finally {
+      info.documents = documents;
+      p.issues = issues;
+      p.drift.delete(node);
+      decorations.dispose();
+      api.manager.notify(p);
+    }
+  });
+
+  it('renders ordered overview sections and binds context actions to their target', async () => {
+    const target = { p, node: 'system/services/payments', doc: 'logic' };
+    api.nodeView.setTarget(target);
+    const contexts = await Promise.all((['document', 'implement'] as const).map(async mode => ({ mode, value: await api.nodeView.context(mode) })));
+    const { html, actions } = renderOverview(target, contexts, 'test-nonce', 1);
+    let previous = html.indexOf('logic.md template');
+    for (const heading of ['Upstream', 'Downstream', 'Code paths', 'Active change', 'Drift', 'Context']) {
+      const index = html.indexOf(`<h2>${heading}</h2>`);
+      assert.ok(index > previous, heading);
+      previous = index;
+    }
+    for (const text of ['Required', 'Internal', 'No active change', 'Document: logic.md', 'Implementation', ':focus-visible']) assert.ok(html.includes(text), text);
+    const copy = actions.find(a => a.command === 'uspec.context.copy' && (a.args[0] as any).mode === 'document')!;
+    api.nodeView.setTarget({ p, node: 'product/support/refunds', doc: 'rules' });
+    await vscode.commands.executeCommand(copy.command, ...copy.args);
+    assert.strictEqual(await vscode.env.clipboard.readText(), await api.manager.text(p, ['context', target.node, '--document', 'logic']));
+    const contents = actions.find(a => a.command === 'uspec.context.copyWithContents' && (a.args[0] as any).mode === 'document')!;
+    await vscode.commands.executeCommand(contents.command, ...contents.args);
+    assert.match(await vscode.env.clipboard.readText(), /===== docs\/system\/services\/payments\/logic.md =====/);
+    const screen = renderOverview({ p, node: 'experience/ops-console/refunds' }, [], 'nonce', 2);
+    const link = screen.actions.find(a => a.command === 'uspec.openSection' && a.args[2] === 'refund-window')!;
+    await vscode.commands.executeCommand(link.command, ...link.args);
+    const editor = vscode.window.activeTextEditor!;
+    assert.match(editor.document.lineAt(editor.selection.start.line).text, /Refund window/);
+  });
+
+  it('follows documents and metadata without stealing focus on refresh', async () => {
+    const node = 'system/services/payments';
+    api.nodeWindow.show({ p, node });
+    const panel = api.nodeWindow.currentPanel!;
+    await vscode.window.showTextDocument(vscode.Uri.file(file(`docs/${node}/logic.md`)));
+    await waitFor('document template', () => panel.webview.html.includes('logic.md template'));
+    assert.strictEqual(api.nodeView.target?.doc, 'logic');
+    await vscode.commands.executeCommand('uspec.revealNode', p.root, node);
+    assert.strictEqual(api.nodeView.target?.doc, 'logic', 'programmatic reveal retains document context');
+    await vscode.window.showTextDocument(vscode.Uri.file(file(`docs/${node}/node.yaml`)));
+    await waitFor('metadata target', () => api.nodeView.target?.node === node && !api.nodeView.target.doc);
+    const editor = vscode.window.activeTextEditor;
+    p.drift.set(node, 'test drift');
+    api.manager.notify(p);
+    await waitFor('drift refresh', () => panel.webview.html.includes('test drift'));
+    assert.strictEqual(vscode.window.activeTextEditor, editor);
+    p.drift.delete(node);
+    api.manager.notify(p);
+    panel.dispose();
+  });
+
+  it('re-evaluates code ownership and clears removed nodes on model refresh', () => {
+    const view = new NodeViewProvider(api.manager);
+    const payments = p.nodes.get('system/services/payments')!;
+    const nested = p.nodes.get('system/services/orders')!;
+    const previousCode = nested.code;
+    try {
+      view.followFile(p.uriOf('services/payments/nested/index.ts'));
+      assert.strictEqual(view.target?.node, payments.path);
+      nested.code = ['services/payments/nested/'];
+      api.manager.notify(p);
+      assert.strictEqual(view.target?.node, nested.path);
+      view.setTarget({ p, node: nested.path });
+      p.nodes.delete(nested.path);
+      api.manager.notify(p);
+      assert.strictEqual(view.target, undefined);
+    } finally {
+      nested.code = previousCode;
+      p.nodes.set(nested.path, nested);
+      view.dispose();
+      api.manager.notify(p);
+    }
+  });
+
+  it('discards stale context responses and clears removed targets', async () => {
+    const view = new NodeViewProvider(api.manager);
+    const window = new NodeWindow(view);
+    const node = 'system/services/payments';
+    const original = await api.manager.json<any>(p, ['context', node, '--implement']);
+    let resolve!: (value: any) => void;
+    view.context = () => new Promise(r => { resolve = r; });
+    window.show({ p, node });
+    const panel = window.currentPanel!;
+    view.setTarget({ p, node: 'product/support/refunds' });
+    resolve(original);
+    await new Promise(r => setTimeout(r, 30));
+    assert.ok(!panel.webview.html.includes('services/payments/'));
+    view.setTarget(undefined);
+    assert.match(panel.webview.html, /No node selected/);
+    window.dispose();
+    view.dispose();
   });
 
   it('turns validate errors into problems on the right file', async () => {
@@ -161,6 +310,21 @@ describe('uspec extension', () => {
     assert.strictEqual(data.docs.get('system/services/payments/logic.md')?.state, 'updated');
     assert.strictEqual(data.docs.get('system/services/payments/api.md')?.state, 'no-change');
     assert.strictEqual(data.docs.get('system/services/payments/compliance.md')?.state, 'updated');
+    // The overview uses both CLI context modes with the active change and native baseline diffs.
+    const target = { p, node: 'system/services/payments', doc: 'logic' };
+    api.nodeView.setTarget(target);
+    const contexts = await Promise.all((['document', 'implement'] as const).map(async mode => ({ mode, value: await api.nodeView.context(mode) })));
+    const overview = renderOverview(target, contexts, 'test-nonce', 5);
+    assert.ok(contexts.every(ctx => ctx.value.files.change.some(f => f.path === `.uspec/changes/${c}/change.md`)));
+    const diff = overview.actions.find(a => a.command === 'uspec.diffFile')!;
+    assert.ok(diff);
+    await vscode.commands.executeCommand(diff.command, ...diff.args);
+    const diffInput = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+    assert.ok(diffInput instanceof vscode.TabInputTextDiff);
+    assert.strictEqual(diffInput.modified.fsPath, p.abs(diff.args[1] as string));
+    const copy = overview.actions.find(a => a.command === 'uspec.context.copyWithContents' && (a.args[0] as any).mode === 'document')!;
+    await vscode.commands.executeCommand(copy.command, ...copy.args);
+    assert.match(await vscode.env.clipboard.readText(), /===== git diff .* -- docs\/product\/support\/refunds\/rules.md =====/);
     let planner = api.agents.runsOf(p, c).find((r) => r.role === 'planner')!;
     assert.strictEqual(planner.state, 'needs-approval');
     stage = changeStage(data, api.agents.runsOf(p, c));

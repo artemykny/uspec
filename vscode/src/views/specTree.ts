@@ -20,6 +20,16 @@ export class SpecTreeProvider implements vscode.TreeDataProvider<SpecEl>, vscode
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly sub: vscode.Disposable;
   private readonly agentSub?: vscode.Disposable;
+  private reveals = 0;
+
+  get revealing(): boolean { return this.reveals > 0; }
+
+  /** Selecting a row for navigation must not act like a user selecting its overview. */
+  async reveal(view: vscode.TreeView<SpecEl>, el: SpecEl, options: Parameters<vscode.TreeView<SpecEl>['reveal']>[1]): Promise<void> {
+    this.reveals++;
+    try { await view.reveal(el, options); }
+    finally { this.reveals--; }
+  }
 
   constructor(private readonly manager: ProjectManager, private readonly changes?: ChangesViewProvider, private readonly types?: TypesViewProvider) {
     this.sub = manager.onDidChange(() => this.emitter.fire(undefined));
@@ -152,6 +162,7 @@ export class SpecTreeProvider implements vscode.TreeDataProvider<SpecEl>, vscode
         item.resourceUri = el.p.uriOf(el.rel);
         item.iconPath = el.dir ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
         item.contextValue = 'uspec.extra';
+        item.tooltip = `${name}\n${el.rel}`;
         if (!el.dir) item.command = { command: 'vscode.open', title: 'Open', arguments: [item.resourceUri] };
         return item;
       }
@@ -178,16 +189,17 @@ function nodeItem(p: Project, node: string): vscode.TreeItem {
   );
   item.id = `${p.root}|node|${node}`;
   item.resourceUri = p.uriOf(p.nodeDir(node));
-  item.description = n.type ?? '?';
+  item.description = `${n.type ?? '?'}${n.code.length ? ' · </>' : ''}`;
   const issues = p.nodeIssues(node);
   const code = t?.code ?? false;
   item.iconPath = issues.length
     ? new vscode.ThemeIcon('error', new vscode.ThemeColor('list.errorForeground'))
-    : new vscode.ThemeIcon(node === '' ? 'root-folder' : code ? 'file-code' : 'symbol-namespace');
+    : new vscode.ThemeIcon('symbol-namespace');
   item.contextValue = `uspec.node${code ? ';code' : ''}${node === '' ? ';root' : ';child'}`;
 
   const md = new vscode.MarkdownString(undefined, true);
   md.appendMarkdown(`**${showNode(node)}** · ${t ? `${t.name} (\`${t.type}\`)` : `type \`${n.type ?? '?'}\``}\n\n`);
+  md.appendText(`${p.nodeDir(node)}\n\n`);
   if (t?.description) md.appendMarkdown(`${t.description.trim()}\n\n`);
   if (n.deps.length) md.appendMarkdown(`Derives from: ${n.deps.map((l) => `\`${l.raw}\``).join(', ')}\n\n`);
   const down = p.downstream.get(node) ?? [];
@@ -208,9 +220,9 @@ function docItem(p: Project, node: string, doc: string, missing?: boolean): vsco
   item.id = `${p.root}|doc|${key}`;
   const flags: string[] = [];
   if (missing) {
-    item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
+    item.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('list.errorForeground'));
     item.description = 'missing';
-    item.tooltip = `${doc}.md is required by type \`${p.nodes.get(node)?.type}\` but doesn't exist.`;
+    item.tooltip = `${p.docFile(key)}\n${doc}.md is required by type \`${p.nodes.get(node)?.type}\` but doesn't exist.`;
     item.contextValue = 'uspec.missingDoc';
     return item;
   }
@@ -225,8 +237,9 @@ function docItem(p: Project, node: string, doc: string, missing?: boolean): vsco
   item.description = flags.join(' · ');
   const md = new vscode.MarkdownString();
   md.appendMarkdown(`**${key}**\n\n`);
+  md.appendText(`${p.docFile(key)}\n\n`);
   if (td?.description) md.appendMarkdown(`${td.description.trim()}\n\n`);
-  if (td?.derives_from.length) md.appendMarkdown(`Derives from: ${td.derives_from.map((d) => `\`${d}.md\``).join(', ')}\n\n`);
+  if (td?.derives_from.length) md.appendMarkdown(`Derives from: ${td.derives_from.map((d) => `\`${d.replace(/(#.*)?$/, '.md$1')}\``).join(', ')}\n\n`);
   if (state) {
     const change = p.activeChange!.name;
     md.appendMarkdown(`**${change}**: ${STATE_LABEL[state.state]}${state.reason ? ` — ${escapeMd(state.reason)}` : ''}\n\n`);

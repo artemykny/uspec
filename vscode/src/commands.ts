@@ -141,7 +141,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
 
   const reveal = async (p: Project, node: string, doc?: string) => {
     const el: SpecEl = doc ? { kind: 'doc', p, node, doc } : { kind: 'node', p, node };
-    await s.specTreeView.reveal(el, { select: true, focus: false, expand: doc ? false : 1 });
+    await s.specTree.reveal(s.specTreeView, el, { select: true, focus: false, expand: doc ? false : 1 });
   };
 
   // --- General -----------------------------------------------------------------------------------
@@ -250,6 +250,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     if (!p) return;
     const key = nodeKey(node);
     if (openYaml) await open(p.uriOf(p.nodeYaml(key)));
+    else if (s.nodeView.target?.p !== p || s.nodeView.target.node !== key) s.nodeView.setTarget({ p, node: key });
     await reveal(p, key);
   });
 
@@ -398,10 +399,16 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     if (text) await vscode.env.clipboard.writeText(text);
   });
 
+  reg('uspec.type.open', async (arg?: any) => {
+    const rel = arg?.kind === 'type' ? arg.t.path : arg?.kind === 'doc' ? arg.d?.template : undefined;
+    if (arg?.p && rel) await open(arg.p.uriOf(rel));
+  });
+
   // --- Context -----------------------------------------------------------------------------------
 
   /** The job a context command is about: a document to write, or a node to implement. */
   const contextJob = async (arg: any) => {
+    if (arg?.kind === 'context' && arg.target && (arg.mode === 'document' || arg.mode === 'implement')) return { t: arg.target, mode: arg.mode as 'document' | 'implement' };
     if (arg?.kind === 'context' && s.nodeView.target) return { t: s.nodeView.target, mode: arg.mode as 'document' | 'implement' };
     const isDoc = (arg?.kind === 'doc' && (arg.doc || arg.key)) || (!arg && activeTarget()?.doc && !activeTarget()?.code);
     if (isDoc) {

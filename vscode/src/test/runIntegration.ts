@@ -50,8 +50,9 @@ async function main(): Promise<void> {
   const ext = path.resolve(__dirname, '..', '..');
   const repo = path.resolve(ext, '..');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uspec-vscode-'));
-  const cli = path.join(repo, 'cli', 'target', 'debug', 'uspec');
-  execFileSync('cargo', ['build', '-q'], { cwd: path.join(repo, 'cli'), stdio: 'inherit' });
+  const target = path.join(ext, '.vscode-test', 'cli');
+  const cli = path.join(target, 'debug', 'uspec');
+  execFileSync('cargo', ['build', '-q', '--target-dir', target], { cwd: path.join(repo, 'cli'), stdio: 'inherit' });
 
   // Run from inside VS Code (an integrated terminal or an extension), these would make the test
   // instance start as Node or talk to the running window.

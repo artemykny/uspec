@@ -34,6 +34,20 @@ describe('uspec extension on nested projects', () => {
     assert.strictEqual(repo.target(file('docs/method/changes/rules.md'))?.doc, 'rules');
   });
 
+  it('follows files in the nearest project and uses the longest code path', async () => {
+    const [repo, example] = api.manager.projects;
+    await vscode.window.showTextDocument(example.uriOf('docs/system/services/payments/logic.md'));
+    assert.strictEqual(api.nodeView.target?.p, example);
+    assert.strictEqual(api.nodeView.target?.doc, 'logic');
+    await vscode.window.showTextDocument(repo.uriOf('cli/src/change.rs'));
+    assert.strictEqual(api.nodeView.target?.p, repo);
+    assert.strictEqual(api.nodeView.target?.node, 'cli/change');
+    assert.strictEqual(api.nodeView.target?.doc, undefined);
+    const types = api.specTree.getChildren({ kind: 'root', branch: 'types' });
+    assert.strictEqual(types.length, 2);
+    assert.ok(types.every(t => t.kind === 'foreign' && t.value.kind === 'project'));
+  });
+
   it('shows one root per project', () => {
     const roots = api.specTree.getChildren({ kind: 'root', branch: 'specification' }) as SpecEl[];
     assert.deepStrictEqual(
@@ -42,6 +56,9 @@ describe('uspec extension on nested projects', () => {
     );
     const [root] = api.specTree.getChildren(roots[0]);
     assert.strictEqual(api.specTree.getTreeItem(root).label, 'docs');
-    assert.strictEqual(api.changes.getChildren().length, 0);
+    assert.deepStrictEqual(
+      api.changes.getChildren().map(el => el.kind === 'project' ? el.p.root : undefined),
+      api.manager.projects.filter(p => p.changes.length > 0).map(p => p.root),
+    );
   });
 });

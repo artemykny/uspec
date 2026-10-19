@@ -92,18 +92,18 @@
       },
       {
         "command": "uspec.node.new",
-        "title": "New Child Node…",
+        "title": "New Child Node\u2026",
         "category": "uspec",
         "icon": "$(add)"
       },
       {
         "command": "uspec.node.move",
-        "title": "Move/Rename Node…",
+        "title": "Move/Rename Node\u2026",
         "category": "uspec"
       },
       {
         "command": "uspec.node.remove",
-        "title": "Remove Node…",
+        "title": "Remove Node\u2026",
         "category": "uspec"
       },
       {
@@ -146,7 +146,7 @@
       },
       {
         "command": "uspec.change.new",
-        "title": "New Change…",
+        "title": "New Change\u2026",
         "category": "uspec",
         "icon": "$(add)"
       },
@@ -196,17 +196,17 @@
       },
       {
         "command": "uspec.change.markAffected",
-        "title": "Mark Affected…",
+        "title": "Mark Affected\u2026",
         "category": "uspec"
       },
       {
         "command": "uspec.change.markNoChange",
-        "title": "Mark No-Change…",
+        "title": "Mark No-Change\u2026",
         "category": "uspec"
       },
       {
         "command": "uspec.change.addDocument",
-        "title": "Add to Change as Starting Document…",
+        "title": "Add to Change as Starting Document\u2026",
         "category": "uspec"
       },
       {
@@ -311,13 +311,19 @@
       },
       {
         "command": "uspec.claude.startChange",
-        "title": "Start Change with Agent…",
+        "title": "Start Change with Agent\u2026",
         "category": "uspec",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "uspec.claude.continueChange",
         "title": "Continue with Agent",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.type.open",
+        "title": "Open Type Definition or Template",
+        "icon": "$(go-to-file)",
         "category": "uspec"
       }
     ],
@@ -784,6 +790,26 @@
           "command": "uspec.context.copyWithContents",
           "when": "view == uspec.specTree && viewItem == uspec.contextGroup",
           "group": "1_context@3"
+        },
+        {
+          "command": "uspec.type.open",
+          "when": "view == uspec.specTree && (viewItem == uspec.type || viewItem == uspec.typeDoc)",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.type.open",
+          "when": "view == uspec.specTree && (viewItem == uspec.type || viewItem == uspec.typeDoc)",
+          "group": "3_open@1"
+        },
+        {
+          "command": "uspec.node.openYaml",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/",
+          "group": "inline@3"
+        },
+        {
+          "command": "uspec.context.show",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.(doc|node.*;code)/",
+          "group": "inline@4"
         }
       ]
     },
@@ -864,7 +890,7 @@
         "uspec.templateHints": {
           "type": "boolean",
           "default": true,
-          "description": "Flag lines of template guidance (`<…>`) left in spec documents."
+          "description": "Flag lines of template guidance (`<\u2026>`) left in spec documents."
         },
         "uspec.agents.provider": {
           "type": "string",

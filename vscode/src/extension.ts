@@ -25,6 +25,7 @@ export interface UspecApi {
   changes: ChangesViewProvider;
   nodeView: NodeViewProvider;
   stateWindows: StateWindows;
+  nodeWindow: NodeWindow;
   ready: Promise<void>;
 }
 
@@ -38,7 +39,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
   const specTree = new SpecTreeProvider(manager, changes, types);
   const specTreeView = vscode.window.createTreeView<SpecEl>('uspec.specTree', { treeDataProvider: specTree, showCollapseAll: true });
   const nodeView = new NodeViewProvider(manager);
-  const nodeWindow = new NodeWindow();
+  const nodeWindow = new NodeWindow(nodeView);
   const stateWindows = new StateWindows(manager, agents);
 
   ctx.subscriptions.push(
@@ -66,18 +67,20 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     const uri = editor?.document.uri;
     const p = manager.projectFor(uri);
     if (!p || !uri) return;
-    const t = p.target(uri.fsPath);
-    nodeView.setTarget(t && p.nodes.has(t.node) ? { p, node: t.node, doc: t.code ? undefined : t.doc } : undefined);
+    nodeView.followFile(uri);
     if (specTreeView.visible && vscode.workspace.getConfiguration('uspec').get('specTree.followActiveEditor', true)) {
       const el = specTree.elementFor(p, uri.fsPath);
-      if (el) void Promise.resolve(specTreeView.reveal(el, { select: true, focus: false })).catch(() => undefined);
+      if (el) {
+        void specTree.reveal(specTreeView, el, { select: true, focus: false }).catch(() => undefined);
+      }
     }
   };
   ctx.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(follow),
     specTreeView.onDidChangeSelection((e) => {
+      if (specTree.revealing) return;
       const el = e.selection[0];
-      if (el?.kind === 'node') { nodeView.setTarget({ p: el.p, node: el.node }); nodeWindow.show(el.p, el.node); }
+      if (el?.kind === 'node') { nodeView.setTarget({ p: el.p, node: el.node }); nodeWindow.show({ p: el.p, node: el.node }); }
       else if (el?.kind === 'doc' && !el.missing) nodeView.setTarget({ p: el.p, node: el.node, doc: el.doc });
     }),
     manager.onDidChange(() => {
@@ -89,7 +92,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
   );
 
   const ready = manager.discover().then(() => { agents.restore(); follow(vscode.window.activeTextEditor); });
-  return { manager, agents, specTree, changes, nodeView, stateWindows, ready };
+  return { manager, agents, specTree, changes, nodeView, stateWindows, nodeWindow, ready };
 }
 
 export function deactivate(): void {

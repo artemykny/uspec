@@ -55,14 +55,15 @@ export class TypesViewProvider implements vscode.TreeDataProvider<TypeEl>, vscod
         return item;
       }
       case 'type': {
-        const item = new vscode.TreeItem(el.t.type, vscode.TreeItemCollapsibleState.Collapsed);
+        const item = new vscode.TreeItem(el.t.name, vscode.TreeItemCollapsibleState.Collapsed);
         item.id = `${el.p.root}|type|${el.t.type}`;
-        item.description = `${el.t.name}${el.t.code ? ' · code' : ''}`;
+        item.description = `${el.t.type}${el.t.code ? ' · </>' : ''}`;
         const md = new vscode.MarkdownString();
         md.appendMarkdown(`**${el.t.name}** (\`${el.t.type}\`)${el.t.code ? ' · describes code' : ''}\n\n${el.t.description ?? ''}\n\n`);
+        md.appendText(`${el.t.path}\n\n`);
         if (el.t.instructions) md.appendCodeblock(el.t.instructions.trim(), 'text');
         item.tooltip = md;
-        item.iconPath = new vscode.ThemeIcon(el.t.code ? 'file-code' : 'symbol-namespace');
+        item.iconPath = new vscode.ThemeIcon('symbol-class');
         item.command = { command: 'vscode.open', title: 'Open', arguments: [el.p.uriOf(el.t.path)] };
         item.contextValue = 'uspec.type';
         return item;
@@ -70,17 +71,16 @@ export class TypesViewProvider implements vscode.TreeDataProvider<TypeEl>, vscod
       case 'doc': {
         const d = el.d;
         const item = new vscode.TreeItem(`${d.document}.md`);
-        const flags = [];
-        if (!d.required) flags.push('optional');
-        if (!d.exposed) flags.push('internal');
+        const flags = [d.required ? 'required' : 'optional', d.exposed ? 'exposed' : 'internal'];
         if (d.extra) flags.push('extra');
         if (d.derives_from.length) flags.push(`derives from ${d.derives_from.join(', ')}`);
         if (!d.template) flags.push('no template');
         item.description = flags.join(' · ');
-        item.tooltip = d.description?.trim();
-        item.iconPath = new vscode.ThemeIcon('note');
+        item.id = `${el.p.root}|typeDoc|${el.t.type}|${d.document}`;
+        item.tooltip = `${d.document}.md\n${d.template ?? `${el.t.path.slice(0, el.t.path.lastIndexOf('/'))}/${d.document}.md`}\n${d.description?.trim() ?? ''}\n${flags.join(' · ')}`;
+        item.iconPath = vscode.ThemeIcon.File;
         if (d.template) item.command = { command: 'vscode.open', title: 'Open template', arguments: [el.p.uriOf(d.template)] };
-        item.contextValue = 'uspec.typeDoc';
+        item.contextValue = d.template ? 'uspec.typeDoc' : 'uspec.missingTemplate';
         return item;
       }
       case 'info': {
