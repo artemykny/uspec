@@ -3,7 +3,7 @@
 ## Principles
 
 - **Spec first.** The spec is the source of truth. Every change starts in the spec, at the highest node it affects, and only then reaches the code.
-- **Narrow agents.** Each agent run that writes has one responsibility: one document of one node, or the code of one node. Narrow scope keeps context small, output predictable and responsibility clear.
+- **Narrow agents.** Each agent run that writes has one responsibility: the documents of one node, or the code of one node. Narrow scope keeps context small, output predictable and responsibility clear.
 - **Code follows the spec.** If code and spec disagree, the code is a bug, unless the spec is changed explicitly first. Code that is merged always matches the spec. There is one exception, where spec is written from code: an experiment, where code tried out directly is kept by turning it into a spec change.
 - **The spec is consistent.** A node doesn't contradict its ancestors or its upstream nodes. When it does, the node is fixed, or the upstream is changed first and the node brought in line.
 - **Dependencies are explicit.** A node states what it is built from, so a change reaches everything it affects and nothing else.

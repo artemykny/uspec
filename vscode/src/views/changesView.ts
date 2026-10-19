@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import type { DocState } from '../core/model';
 import { nodeKey, showNode } from '../core/paths';
-import type { AgentManager, AgentRun } from '../agents';
+import type { AgentManager, AgentRun, WriterDoc } from '../agents';
 import { STATE_LABEL, type ChangeData, type Project, type ProjectManager } from '../projects';
 import { escapeMd } from './specTree';
 
@@ -13,12 +13,14 @@ export type ChangeEl =
   | { kind: 'group'; p: Project; name: string; group: 'agents' | 'next' | 'documents' | 'implementation' }
   | { kind: 'triage'; p: Project; name: string }
   | { kind: 'nextWrite'; p: Project; name: string }
+  | { kind: 'writeNode'; p: Project; name: string; node: string }
   | { kind: 'nextImplement'; p: Project; name: string }
   | { kind: 'state'; p: Project; name: string; state: DocState }
   | { kind: 'doc'; p: Project; name: string; key: string; section: 'triage' | 'write' | 'documents' }
   | { kind: 'implNode'; p: Project; name: string; node: string }
   | { kind: 'file'; p: Project; name: string; rel: string; label: string }
   | { kind: 'run'; run: AgentRun }
+  | { kind: 'runDoc'; run: AgentRun; key: string }
   | { kind: 'message'; p: Project; name: string; text: string; closable?: boolean };
 
 const STATES: DocState[] = ['affected', 'pending', 'updated', 'no-change'];
@@ -28,6 +30,19 @@ const STATE_ICON: Record<DocState, [string, string?]> = {
   affected: ['circle-large-filled', 'charts.orange'],
   updated: ['pass-filled', 'charts.blue'],
   'no-change': ['pass', 'charts.green'],
+};
+
+const RUN_ICONS: Record<string, [string, string?]> = {
+  running: ['loading~spin'],
+  'needs-approval': ['question', 'charts.yellow'],
+  recorded: ['pass', 'charts.green'],
+  reviewed: ['pass', 'charts.green'],
+  blocked: ['debug-pause', 'charts.orange'],
+  gap: ['warning', 'charts.orange'],
+  failed: ['error', 'charts.red'],
+  error: ['error', 'charts.red'],
+  stopped: ['debug-stop'],
+  rejected: ['discard'],
 };
 
 export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, vscode.Disposable {
@@ -89,7 +104,11 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
       case 'triage':
         return (p.change(el.name)?.next?.triage?.batch ?? []).map((b) => ({ kind: 'doc', p, name: el.name, key: b.document, section: 'triage' }));
       case 'nextWrite':
-        return (p.change(el.name)?.next?.write ?? []).map((w) => ({ kind: 'doc', p, name: el.name, key: w.document, section: 'write' }));
+        return (p.change(el.name)?.next?.write ?? []).map((w) => ({ kind: 'writeNode', p, name: el.name, node: nodeKey(w.node) }));
+      case 'writeNode':
+        return writeEntry(p.change(el.name), el.node).map((key) => ({ kind: 'doc', p, name: el.name, key, section: 'write' }));
+      case 'run':
+        return el.run.docs.map((d) => ({ kind: 'runDoc', run: el.run, key: d.key }));
       case 'nextImplement':
         return (p.change(el.name)?.next?.implement ?? []).map((n) => ({ kind: 'implNode', p, name: el.name, node: nodeKey(n.node) }));
       default:
@@ -157,12 +176,25 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
         return item;
       }
       case 'nextWrite': {
-        const n = el.p.change(el.name)?.next?.write.length ?? 0;
+        const write = el.p.change(el.name)?.next?.write ?? [];
+        const n = write.reduce((k, w) => k + w.documents.length, 0);
         const item = new vscode.TreeItem('Write', vscode.TreeItemCollapsibleState.Expanded);
         item.id = `${el.p.root}|${el.name}|write`;
-        item.description = `${n} document${n === 1 ? '' : 's'}`;
-        item.tooltip = 'Affected documents ready to be written: one writer agent each.';
+        item.description = `${n} document${n === 1 ? '' : 's'} in ${write.length} node${write.length === 1 ? '' : 's'}`;
+        item.tooltip = 'Affected documents ready to be written, by node: one writer agent per node writes its documents together.';
         item.iconPath = new vscode.ThemeIcon('edit');
+        return item;
+      }
+      case 'writeNode': {
+        const n = writeEntry(el.p.change(el.name), el.node).length;
+        const busy = this.agents.writing(el.p, el.name, el.node);
+        const item = new vscode.TreeItem(showNode(el.node), vscode.TreeItemCollapsibleState.Expanded);
+        item.id = `${el.p.root}|${el.name}|write|${el.node}`;
+        item.description = `${n} document${n === 1 ? '' : 's'}${busy ? ' · writing…' : ''}`;
+        item.tooltip = `One writer writes these documents of ${showNode(el.node)} together, with one context.`;
+        item.iconPath = new vscode.ThemeIcon(busy ? 'loading~spin' : 'type-hierarchy');
+        item.resourceUri = el.p.uriOf(el.p.nodeDir(el.node));
+        item.command = { command: 'uspec.revealNode', title: 'Reveal', arguments: [el.p.root, el.node] };
         return item;
       }
       case 'nextImplement': {
@@ -197,6 +229,8 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
       }
       case 'run':
         return this.runItem(el.run);
+      case 'runDoc':
+        return this.runDocItem(el.run, el.run.docs.find((d) => d.key === el.key)!);
       case 'message': {
         const item = new vscode.TreeItem(el.text);
         item.tooltip = el.text;
@@ -234,7 +268,7 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
     const d = c.docs.get(key);
     const state = d?.state ?? 'pending';
     const busy = this.agents.isBusy(p, name, key);
-    const ready = el.section === 'write' || Boolean(c.next?.write.some((w) => w.document === key));
+    const ready = el.section === 'write' || Boolean(c.next?.write.some((w) => w.documents.some((x) => x.document === key)));
     const item = new vscode.TreeItem(key);
     item.id = `${p.root}|${name}|${el.section}|${key}`;
     item.resourceUri = p.uriOf(p.docFile(key));
@@ -256,7 +290,7 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
     const c = p.change(name)!;
     const state = c.impl.get(node) ?? 'pending';
     const ready = Boolean(c.next?.implement.some((n) => nodeKey(n.node) === node));
-    const busy = this.agents.isBusy(p, name, node);
+    const busy = this.agents.isBusy(p, name, node, 'implementer');
     const item = new vscode.TreeItem(showNode(node));
     item.id = `${p.root}|${name}|impl|${node}`;
     item.description = busy ? 'implementing…' : state === 'done' ? 'done' : ready ? 'ready' : 'waiting';
@@ -276,7 +310,10 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
   }
 
   private runItem(run: AgentRun): vscode.TreeItem {
-    const item = new vscode.TreeItem(run.title);
+    const item = new vscode.TreeItem(
+      run.title,
+      !run.docs.length ? vscode.TreeItemCollapsibleState.None : run.state === 'needs-approval' ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed,
+    );
     item.id = `run|${run.id}`;
     item.description = this.agents.describe(run);
     const md = new vscode.MarkdownString();
@@ -285,22 +322,27 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
     if (run.detail) md.appendMarkdown(`${escapeMd(run.detail.slice(0, 1500))}\n\n`);
     if (run.sessionId) md.appendMarkdown(`session \`${run.sessionId}\``);
     item.tooltip = md;
-    const icons: Record<string, [string, string?]> = {
-      running: ['loading~spin'],
-      'needs-approval': ['question', 'charts.yellow'],
-      recorded: ['pass', 'charts.green'],
-      reviewed: ['pass', 'charts.green'],
-      blocked: ['debug-pause', 'charts.orange'],
-      gap: ['warning', 'charts.orange'],
-      failed: ['error', 'charts.red'],
-      error: ['error', 'charts.red'],
-      stopped: ['debug-stop'],
-      rejected: ['discard'],
-    };
-    const [icon, color] = icons[run.state] ?? ['circle-outline'];
+    const [icon, color] = RUN_ICONS[run.state] ?? ['circle-outline'];
     item.iconPath = new vscode.ThemeIcon(icon, color ? new vscode.ThemeColor(color) : undefined);
     item.command = { command: 'uspec.agents.showLog', title: 'Show Log', arguments: [{ kind: 'run', run }] };
     item.contextValue = `uspec.run;${run.state};${run.role};${run.sessionId ? 'session' : ''}`;
+    return item;
+  }
+
+  /** One document of a writer run, with its own result. */
+  private runDocItem(run: AgentRun, d: WriterDoc): vscode.TreeItem {
+    const item = new vscode.TreeItem(d.key);
+    item.id = `run|${run.id}|${d.key}`;
+    item.description = d.state === 'running' ? (run.queued ? 'queued' : 'writing…') : d.state === 'needs-approval' ? `waiting for approval · ${d.outcome}` : d.outcome;
+    const md = new vscode.MarkdownString();
+    md.appendMarkdown(`**${d.key}** · ${d.state}\n\n`);
+    if (d.outcome) md.appendMarkdown(`${escapeMd(d.outcome)}\n\n`);
+    if (d.detail) md.appendMarkdown(escapeMd(d.detail.slice(0, 1500)));
+    item.tooltip = md;
+    const [icon, color] = RUN_ICONS[d.state] ?? ['circle-outline'];
+    item.iconPath = new vscode.ThemeIcon(icon, color ? new vscode.ThemeColor(color) : undefined);
+    item.command = { command: 'vscode.open', title: 'Open', arguments: [run.p.uriOf(run.p.docFile(d.key))] };
+    item.contextValue = `uspec.runDoc;${d.state}`;
     return item;
   }
 }
@@ -310,11 +352,17 @@ export function summary(c: ChangeData): string {
   const n = c.next;
   const parts: string[] = [];
   if (n?.triage) parts.push(`${n.triage.batch.length} to triage`);
-  if (n?.write.length) parts.push(`${n.write.length} to write`);
+  const write = n?.write.reduce((k, w) => k + w.documents.length, 0) ?? 0;
+  if (write) parts.push(`${write} to write`);
   if (n?.implement.length) parts.push(`${n.implement.length} to implement`);
   if (!parts.length) {
     const open = c.counts.pending + c.counts.affected + c.counts.implementation_pending;
     parts.push(!c.docs.size ? 'empty' : open ? `${open} waiting` : 'ready to close');
   }
   return parts.join(' · ');
+}
+
+/** The documents `change next` lists to write in a node, in order. */
+function writeEntry(c: ChangeData | undefined, node: string): string[] {
+  return c?.next?.write.find((w) => nodeKey(w.node) === node)?.documents.map((d) => d.document) ?? [];
 }

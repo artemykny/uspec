@@ -91,7 +91,8 @@ export interface NextJson {
     read: { path: string; document?: string; diff_since?: string }[];
     batch: { document: string; path: string; via: string[] }[];
   };
-  write: { document: string; path: string }[];
+  /** By node: one entry per node with its ready `affected` documents, one writer each. */
+  write: { node: string; documents: { document: string; path: string }[] }[];
   implement: { node: string }[];
 }
 
@@ -103,7 +104,8 @@ export interface ContextFileJson {
 export interface ContextJson {
   node: string;
   type: string;
-  document: string | null;
+  /** The ids of the documents being written, in the order given; `[]` with `--implement`. */
+  documents: string[];
   instructions: { type: string; text: string | null };
   files: Record<string, ContextFileJson[]>;
   baseline: string | null;

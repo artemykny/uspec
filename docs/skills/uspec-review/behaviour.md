@@ -24,7 +24,7 @@ When the user asks to review, check or audit the spec: the whole tree, a subtree
 **Reviewer**, one per node in scope. Its prompt is `reviewer-agent.md`, followed by the node's [`uspec context`](../../cli/context/usage.md) output:
 
 - a node with code paths: `uspec context <node> --implement`;
-- a node without code paths: `uspec context <node> --document <id>` for each of its documents.
+- a node without code paths: `uspec context <node> --document <id>...`, one `--document` per document, so all its documents share one context.
 
 It reads every listed file but not the code, and checks the node as the rules above say. It returns one block per finding, most serious first, or `No findings.`:
 

@@ -44,12 +44,13 @@ A **change** is one unit of work on the product: what changes, why, and every do
 
 If its node has code paths, the node is added under `implementation`. `affected` and `no-change` propagate nothing: a document that doesn't change passes nothing on, so the change stops there. When an update reaches a document that is already settled, it goes back to `pending` and is triaged again against the new diff. Propagation repeats until no candidates are left.
 
-**Triage and write.** Candidates are triaged in batches: one agent reads `change.md`, the diffs and the batch, and marks each candidate `affected` or `no-change`. Each `affected` document then gets its own writer, with the document's [context](../context/); see [agents](../agents/).
+**Triage and write.** Candidates are triaged in batches: one agent reads `change.md`, the diffs and the batch, and marks each candidate `affected` or `no-change`. The ready `affected` documents of one node then get one writer together, with their [context](../context/); see [agents](../agents/). The writer decides each document on its own and edits only those documents.
 
 **Readiness.** Items are handled in dependency order, so the next step can be read from `status.yaml` alone.
 
 - A document is ready when no unsettled document can still reach it through propagation. A screen that links to a service waits for the service's exposed `api.md`, not for its internal `logic.md`.
 - A node is ready to implement when the nodes it links to are `done`.
+- A node's ready documents are written together. A document that derives from an unsettled document of its node still waits for it, so one node can get more than one writer in a change.
 - Ready items in different nodes are handled in parallel.
 
 **Implement.** Implementation follows the spec changes of a change, never replaces them. Each node under `implementation` gets its own implementer.

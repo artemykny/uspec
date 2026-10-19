@@ -4,12 +4,15 @@ import {
   claudeArgs,
   describeEvent,
   fromExperiment,
+  modelFor,
   parseImplementer,
   parseReview,
   parseTriage,
   parseWriter,
   permissions,
   triageInput,
+  writerContextArgs,
+  writerDocs,
 } from '../../core/agents';
 import { findToken, locateInFile, locateIssue } from '../../core/issues';
 import type { NextJson } from '../../core/model';
@@ -207,8 +210,9 @@ describe('agents', () => {
 
   it('builds the prompt and arguments', () => {
     assert.strictEqual(agentPrompt('You are a writer.\n', 'context\n', 'Mode: check'), 'You are a writer.\n\nMode: check\n\ncontext\n');
-    const perms = permissions('writer', { document: 'docs/a/api.md', extraDir: 'docs/a/api-extra' });
+    const perms = permissions('writer', { documents: ['docs/a/api.md', 'docs/a/logic.md'], extraDirs: ['docs/a/api-extra'] });
     assert.ok(perms.allowed.includes('Edit(docs/a/api.md)'));
+    assert.ok(perms.allowed.includes('Edit(docs/a/logic.md)'));
     assert.ok(perms.allowed.includes('Write(docs/a/api-extra/**)'));
     const impl = permissions('implementer', { codePaths: [{ path: 'services/payments', dir: true }, { path: 'cli/src/main.rs', dir: false }], implementerAllowed: ['Bash'] });
     assert.ok(impl.allowed.includes('Edit(services/payments/**)'));
@@ -219,7 +223,59 @@ describe('agents', () => {
     assert.deepStrictEqual(args.slice(0, 7), ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--permission-prompts', 'none']);
     assert.strictEqual(args[args.indexOf('--model') + 1], 'opus');
     assert.strictEqual(args[args.length - perms.allowed.length - 1], '--allowedTools');
-    assert.match(args[args.indexOf('--append-system-prompt') + 1], /You may edit only: docs\/a\/api\.md, docs\/a\/api-extra\/\*\*\./);
+    assert.match(args[args.indexOf('--append-system-prompt') + 1], /You may edit only: docs\/a\/api\.md, docs\/a\/logic\.md, docs\/a\/api-extra\/\*\*\./);
+    assert.ok(!claudeArgs(perms).includes('--model'));
+  });
+
+  it('runs triage on the triage model and the others on the agents model', () => {
+    const settings = { model: '', triageModel: 'sonnet' };
+    assert.strictEqual(modelFor('triage', settings), 'sonnet');
+    assert.strictEqual(modelFor('writer', settings), undefined);
+    assert.strictEqual(modelFor('implementer', settings), undefined);
+    assert.strictEqual(modelFor('reviewer', settings), undefined);
+    assert.strictEqual(modelFor('writer', { model: 'opus', triageModel: 'sonnet' }), 'opus');
+    assert.strictEqual(modelFor('triage', { model: 'opus', triageModel: '' }), undefined);
+  });
+
+  it('gives one writer per node all its documents to write', () => {
+    const write: NextJson = {
+      ...next,
+      triage: null,
+      write: [
+        {
+          node: 'system/services/payments',
+          documents: [
+            { document: 'system/services/payments/api.md', path: 'docs/system/services/payments/api.md' },
+            { document: 'system/services/payments/compliance.md', path: 'docs/system/services/payments/compliance.md' },
+          ],
+        },
+        { node: '.', documents: [{ document: 'overview.md', path: 'docs/overview.md' }] },
+      ],
+    };
+    // Run writer on a document runs its node's writer, with the node's other documents under `write`.
+    assert.deepStrictEqual(writerDocs(write, 'system/services/payments/compliance.md'), {
+      node: 'system/services/payments',
+      documents: ['system/services/payments/api.md', 'system/services/payments/compliance.md'],
+      ready: true,
+    });
+    assert.deepStrictEqual(writerDocs(write, 'system/services/payments/logic.md'), {
+      node: 'system/services/payments',
+      documents: ['system/services/payments/logic.md', 'system/services/payments/api.md', 'system/services/payments/compliance.md'],
+      ready: false,
+    });
+    assert.deepStrictEqual(writerDocs(write, 'overview.md'), { node: '', documents: ['overview.md'], ready: true });
+    assert.deepStrictEqual(writerDocs(write, 'system/overview.md'), { node: 'system', documents: ['system/overview.md'], ready: false });
+    assert.deepStrictEqual(writerContextArgs('system/services/payments', ['system/services/payments/api.md', 'system/services/payments/compliance.md'], 'c'), [
+      'context',
+      'system/services/payments',
+      '--document',
+      'api',
+      '--document',
+      'compliance',
+      '--change',
+      'c',
+    ]);
+    assert.deepStrictEqual(writerContextArgs('', ['overview.md'], 'c'), ['context', '.', '--document', 'overview', '--change', 'c']);
   });
 
   it('reads triage results', () => {
@@ -248,18 +304,59 @@ describe('agents', () => {
     assert.strictEqual(parseTriage('a.md | affected | x\n\nNotes:\n- none', ['a.md'], '').notes, '');
   });
 
-  it('reads writer results', () => {
-    assert.deepStrictEqual(parseWriter('updated\nThe window is 30 days.\nuser-visible: yes'), { kind: 'updated', summary: 'The window is 30 days.', userVisible: true, notes: '' });
-    assert.deepStrictEqual(parseWriter('Done.\n\n```\nupdated\nRenamed a state.\nuser-visible: no\n```\n\n- A link may be missing.'), {
-      kind: 'updated',
-      summary: 'Renamed a state.',
-      userVisible: false,
+  it('reads writer results, one per document', () => {
+    const one = (text: string) => {
+      const r = parseWriter(text, ['a/logic.md'], 'docs');
+      return { result: r.results.get('a/logic.md'), notes: r.notes };
+    };
+    // One document: its path may be left out.
+    assert.deepStrictEqual(one('updated\nThe window is 30 days.\nuser-visible: yes'), {
+      result: { kind: 'updated', summary: 'The window is 30 days.', userVisible: true },
+      notes: '',
+    });
+    assert.deepStrictEqual(one('Done.\n\n```\nupdated\nRenamed a state.\nuser-visible: no\n```\n\n- A link may be missing.'), {
+      result: { kind: 'updated', summary: 'Renamed a state.', userVisible: false },
       notes: '- A link may be missing.',
     });
-    assert.deepStrictEqual(parseWriter('**no change**\nThe document never mentions the window.'), { kind: 'no-change', reason: 'The document never mentions the window.' });
-    assert.deepStrictEqual(parseWriter('blocked\napi.md must return the window first.'), { kind: 'blocked', reason: 'api.md must return the window first.' });
-    assert.deepStrictEqual(parseWriter('I could not decide.'), { kind: 'invalid' });
-    assert.strictEqual((parseWriter('updated\nSomething.') as { userVisible: boolean }).userVisible, true);
+    assert.deepStrictEqual(one('docs/a/logic.md\n**no change**\nThe document never mentions the window.').result, { kind: 'no-change', reason: 'The document never mentions the window.' });
+    assert.deepStrictEqual(one('blocked\napi.md must return the window first.').result, { kind: 'blocked', reason: 'api.md must return the window first.' });
+    assert.strictEqual(one('I could not decide.').result, undefined);
+    assert.strictEqual((one('updated\nSomething.').result as { userVisible: boolean }).userVisible, true);
+
+    // Several documents: each result starts with its path, in the order given, and is read on its own.
+    const docs = ['a/api.md', 'a/logic.md', 'a/events.md'];
+    const text = [
+      'Here are my results.',
+      '```',
+      'docs/a/api.md',
+      'no change',
+      'The API never mentions the window.',
+      '',
+      '`docs/a/logic.md`',
+      'updated',
+      'The window is 30 days.',
+      'user-visible: yes',
+      '',
+      '### docs/a/events.md:',
+      'blocked',
+      'docs/b/rules.md must say when a refund expires.',
+      '```',
+      '',
+      'A link to b/glossary may be missing.',
+    ].join('\n');
+    const r = parseWriter(text, docs, 'docs');
+    assert.deepStrictEqual(Object.fromEntries(r.results), {
+      'a/api.md': { kind: 'no-change', reason: 'The API never mentions the window.' },
+      'a/logic.md': { kind: 'updated', summary: 'The window is 30 days.', userVisible: true },
+      'a/events.md': { kind: 'blocked', reason: 'docs/b/rules.md must say when a refund expires.' },
+    });
+    assert.strictEqual(r.notes, 'A link to b/glossary may be missing.');
+
+    // A document left without a result gets none; a path outside the run isn't a result.
+    const partial = parseWriter('docs/a/logic.md\nupdated\nX.\nuser-visible: no\n\ndocs/z/other.md\nno change\nY.', docs, 'docs');
+    assert.deepStrictEqual([...partial.results.keys()], ['a/logic.md']);
+    // Without paths, several documents can't be told apart.
+    assert.strictEqual(parseWriter('updated\nX.\nuser-visible: no', docs, 'docs').results.size, 0);
   });
 
   it('reads implementer and reviewer results', () => {

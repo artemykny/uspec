@@ -27,7 +27,7 @@ Manages the [change directory](../../method/changes/) `.uspec/changes/<name>/` a
 Prints only what can be done now, in three groups. Items that aren't [ready](../../method/changes/) are left out.
 
 - `triage`: the ready `pending` documents as one batch, each with the rules that reached it, and the files the triage agent reads with them: `change.md` and every `updated` document that can reach a document in the batch, as a diff since the baseline.
-- `write`: the ready `affected` documents, one writer each.
+- `write`: the ready `affected` documents, by node: one entry per node with its ready `affected` documents, one writer each.
 - `implement`: the nodes under `implementation` that aren't `done` and whose linked nodes aren't pending in the change, one implementer each. Nodes are listed only once every document in the change is settled.
 
 A document is ready when no other unsettled document can reach it through propagation. Two unsettled documents that can reach each other don't wait for each other.
@@ -119,7 +119,7 @@ With `--json`:
 | `new` | `change`, `path`, `baseline` |
 | `list` | `changes`: each with `change`, `baseline`, `created`, `counts` (`pending`, `affected`, `updated`, `no_change`, `implementation_pending`, `implementation_done`) |
 | `status` | `change`, `baseline`, `documents` (`document`, `path`, `state`, `reason`, `via`), `implementation` (`node`, `state`) |
-| `next` | `change`, `baseline`, `triage` (`null` when empty, else `read`: `path`, plus `document` and `diff_since` for diffs; `batch`: `document`, `path`, `via`), `write` (`document`, `path`), `implement` (`node`) |
+| `next` | `change`, `baseline`, `triage` (`null` when empty, else `read`: `path`, plus `document` and `diff_since` for diffs; `batch`: `document`, `path`, `via`), `write` (`node`, `documents`: `document`, `path`), `implement` (`node`) |
 | `set` | `change`, `document` or `node`, `state`; for `updated` also `propagated` (`document`, `path`, `via`, `already_in_change`) and `implementation` (the node added, or `null`) |
 | `close` | `change`, `closed: true` |
 

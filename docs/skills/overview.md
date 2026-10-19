@@ -17,17 +17,17 @@ A skill is run by the agent the user talks to, the **main agent**. It talks to t
 | Subagent | Skill | One run per | Reads |
 |---|---|---|---|
 | Triage | `uspec-spec` | batch of candidates from `uspec change next` | `change.md`, the diffs and the candidates |
-| Writer | `uspec-spec` | affected document | the output of `uspec context <node> --document <id>` |
+| Writer | `uspec-spec` | node with documents to write | the output of `uspec context <node> --document <id>...`, one `--document` per document |
 | Implementer | `uspec-implement` | node to implement | the output of `uspec context <node> --implement` |
 | Reviewer | `uspec-review` | node in scope | the node's `uspec context` output |
 
-Each subagent's prompt is a file next to its skill (`triage-agent.md`, `writer-agent.md`, `implementer-agent.md`, `reviewer-agent.md`). The main agent starts a subagent with that prompt followed by the CLI output it reads. A subagent returns a result; only the main agent records it. Subagents for different nodes run in parallel.
+Each subagent's prompt is a file next to its skill (`triage-agent.md`, `writer-agent.md`, `implementer-agent.md`, `reviewer-agent.md`). The main agent starts a subagent with that prompt followed by the CLI output it reads. A subagent returns a result; only the main agent records it. Subagents for different nodes run in parallel. Triage runs on Sonnet, since it only judges; the other subagents run on the main agent's model.
 
 ## Shared rules
 
 - **The CLI decides.** What to do next comes from `uspec change next`, and what an agent reads from `uspec context`. Skills don't pick files or order themselves.
 - **Name the change.** Every CLI call names the change. A skill says which change it works on ("Using change: refund-window"), and asks when more than one is open and the user hasn't said.
-- **One subagent per item.** One document of one node, or the code of one node.
+- **One subagent per item.** The documents of one node, or the code of one node.
 - **Stop and resume.** The state lives in the change directory, so a skill can stop at any point and be run again in a new session. It picks up from `uspec change next`.
 
 ## Install

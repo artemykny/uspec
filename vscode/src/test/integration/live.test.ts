@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { AgentRun } from '../../agents';
 import type { NextJson } from '../../core/model';
+import { nodeKey } from '../../core/paths';
 import type { UspecApi } from '../../extension';
 
 const work = process.env.USPEC_TEST_WORKSPACE!;
@@ -32,7 +33,8 @@ describe('uspec agents with Claude Code', () => {
       if (!next.triage && !next.write.length) break;
       const jobs: Promise<AgentRun | undefined>[] = [];
       if (next.triage) jobs.push(api.agents.runTriage(p, c, next));
-      for (const w of next.write) jobs.push(api.agents.runWriter(p, c, w.document));
+      // One writer per node, on its documents to write.
+      for (const w of next.write) jobs.push(api.agents.runWriter(p, c, nodeKey(w.node), w.documents.map((d) => d.document)));
       for (const r of await Promise.all(jobs)) if (r) runs.push(r);
     }
     for (const r of runs) {

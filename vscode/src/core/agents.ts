@@ -1,7 +1,7 @@
 // Agent runs (docs/vscode/overview.md#agents): what each role reads, what it may do, and how its
 // result is read. Nothing here touches VS Code or starts a process.
 import type { NextJson } from './model';
-import { normaliseCodePath, toDocKey } from './paths';
+import { nodeKey, normaliseCodePath, splitDoc, toDocKey } from './paths';
 
 export type Role = 'triage' | 'writer' | 'implementer' | 'reviewer';
 
@@ -26,6 +26,29 @@ export function triageInput(next: NextJson): string {
   const read: [string, string][] = next.triage.read.map((r) => [r.path, r.diff_since ? `diff since ${short(r.diff_since)}` : '']);
   const batch: [string, string][] = next.triage.batch.map((b) => [b.path, b.via.join('; ')]);
   return `triage:\n  read:\n${columns(read, '    ')}  batch:\n${columns(batch, '    ')}`;
+}
+
+/**
+ * The documents a writer works on when it is started from document `key`: its node's documents under
+ * `write` in `change next`, in that order, with `key` first when `next` doesn't list it as ready.
+ */
+export function writerDocs(next: NextJson, key: string): { node: string; documents: string[]; ready: boolean } {
+  const { node } = splitDoc(key);
+  const listed = next.write.find((w) => nodeKey(w.node) === node)?.documents.map((d) => d.document) ?? [];
+  const ready = listed.includes(key);
+  return { node, documents: ready ? listed : [key, ...listed], ready };
+}
+
+/** The `uspec context` arguments of a writer: one `--document` per document, in order. */
+export function writerContextArgs(node: string, documents: string[], change: string): string[] {
+  const shown = node === '' ? '.' : node;
+  return ['context', shown, ...documents.flatMap((d) => ['--document', splitDoc(d).doc]), '--change', change];
+}
+
+/** The model a role runs on: triage on `uspec.agents.triageModel`, the others on `uspec.agents.model`; empty is Claude Code's default. */
+export function modelFor(role: Role, settings: { model?: string; triageModel?: string }): string | undefined {
+  const m = role === 'triage' ? settings.triageModel : settings.model;
+  return m?.trim() || undefined;
 }
 
 /** Joins a role's prompt and its input. */
@@ -58,7 +81,7 @@ function editRules(path: string, dir: boolean): string[] {
 
 export function permissions(
   role: Role,
-  opts: { document?: string; extraDir?: string; codePaths?: { path: string; dir: boolean }[]; implementerAllowed?: string[] } = {},
+  opts: { documents?: string[]; extraDirs?: string[]; codePaths?: { path: string; dir: boolean }[]; implementerAllowed?: string[] } = {},
 ): Permissions {
   switch (role) {
     case 'triage':
@@ -66,8 +89,8 @@ export function permissions(
       return { tools: ['Read', 'Glob', 'Grep', 'Bash'], allowed: READ };
     case 'writer': {
       const allowed = [...READ];
-      if (opts.document) allowed.push(...editRules(opts.document, false));
-      if (opts.extraDir) allowed.push(...editRules(opts.extraDir, true));
+      for (const d of opts.documents ?? []) allowed.push(...editRules(d, false));
+      for (const d of opts.extraDirs ?? []) allowed.push(...editRules(d, true));
       return { tools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'], allowed };
     }
     case 'implementer': {
@@ -156,27 +179,71 @@ export function parseTriage(text: string, batch: string[], specRoot: string): { 
 }
 
 export type WriterResult =
-  | { kind: 'updated'; summary: string; userVisible: boolean; notes: string }
+  | { kind: 'updated'; summary: string; userVisible: boolean }
   | { kind: 'no-change'; reason: string }
-  | { kind: 'blocked'; reason: string }
-  | { kind: 'invalid' };
+  | { kind: 'blocked'; reason: string };
 
-export function parseWriter(text: string): WriterResult {
-  const v = verdict(resultLines(text), ['updated', 'no change', 'no-change', 'blocked']);
-  if (!v) return { kind: 'invalid' };
-  const rest = v.rest.filter((l) => l !== '');
-  if (v.word === 'updated') {
-    const at = rest.findIndex((l) => /^user-visible:/i.test(l));
-    const summary = rest.find((l) => !/^user-visible:/i.test(l)) ?? '';
-    // When the writer doesn't say, ask rather than record unseen.
-    const userVisible = at >= 0 ? !/:\s*no\b/i.test(rest[at]) : true;
-    // Anything after the block: what the writer wants the user to know.
-    const notes = at >= 0 ? rest.slice(at + 1).join('\n').trim() : '';
-    return { kind: 'updated', summary, userVisible, notes };
+const WRITER_WORDS = ['updated', 'no change', 'no-change', 'blocked'];
+
+/** One document's result from its verdict line on: the verdict, its paragraph, and what follows it. */
+function writerBlock(lines: string[]): { result: WriterResult; trailing: string[] } | undefined {
+  const v = verdict(lines, WRITER_WORDS);
+  if (!v) return undefined;
+  // The result is the paragraph after the verdict; for `updated` it ends at `user-visible:`.
+  const rest = v.rest;
+  let from = 0;
+  while (from < rest.length && rest[from] === '') from++;
+  let end = from;
+  while (end < rest.length && rest[end] !== '') {
+    end++;
+    if (v.word === 'updated' && /^user-visible:/i.test(rest[end - 1])) break;
   }
-  if (v.word === 'no change' || v.word === 'no-change') return { kind: 'no-change', reason: rest.join(' ') || 'The writer found nothing to change.' };
-  if (v.word === 'blocked') return { kind: 'blocked', reason: rest.join('\n') };
-  return { kind: 'invalid' };
+  const para = rest.slice(from, end);
+  const trailing = rest.slice(end);
+  if (v.word === 'updated') {
+    const uv = para.find((l) => /^user-visible:/i.test(l));
+    // When the writer doesn't say, ask rather than record unseen.
+    return { result: { kind: 'updated', summary: para.find((l) => !/^user-visible:/i.test(l)) ?? '', userVisible: uv ? !/:\s*no\b/i.test(uv) : true }, trailing };
+  }
+  if (v.word === 'blocked') return { result: { kind: 'blocked', reason: para.join('\n') }, trailing };
+  return { result: { kind: 'no-change', reason: para.join(' ') || 'The writer found nothing to change.' }, trailing };
+}
+
+/** The document a line names on its own (`docs/a/logic.md`, `` `a/logic.md` ``, `### a/logic.md:`), when it is one of `docs`. */
+function namedDoc(line: string, docs: Set<string>, specRoot: string): string | undefined {
+  const s = line.replace(/^[#>\s*-]+/, '').replace(/[:\s]+$/, '');
+  if (!s || /\s/.test(s)) return undefined;
+  const key = toDocKey(specRoot, s);
+  return docs.has(key) ? key : undefined;
+}
+
+/**
+ * Reads a writer's results: one per document, each starting with the document's path on its own line,
+ * then `updated`, `no change` or `blocked`. A run with one document may leave out the path. Anything the
+ * writer adds after a result is kept as notes. A document without a result isn't in `results`.
+ */
+export function parseWriter(text: string, docs: string[], specRoot: string): { results: Map<string, WriterResult>; notes: string } {
+  const lines = resultLines(text);
+  const wanted = new Set(docs);
+  const heads: { at: number; doc: string }[] = [];
+  lines.forEach((line, i) => {
+    const doc = namedDoc(line, wanted, specRoot);
+    if (!doc) return;
+    const next = lines.slice(i + 1).find((l) => l !== '');
+    if (next !== undefined && WRITER_WORDS.includes(next.replace(/^[`#>\s-]+|[`.:\s]+$/g, '').toLowerCase())) heads.push({ at: i, doc });
+  });
+  const results = new Map<string, WriterResult>();
+  const notes: string[] = [];
+  const add = (doc: string, block: string[]) => {
+    const b = writerBlock(block);
+    if (!b) return;
+    if (!results.has(doc)) results.set(doc, b.result);
+    const t = b.trailing.join('\n').trim();
+    if (t) notes.push(t);
+  };
+  if (!heads.length && docs.length === 1) add(docs[0], lines);
+  heads.forEach((h, k) => add(h.doc, lines.slice(h.at + 1, k + 1 < heads.length ? heads[k + 1].at : lines.length)));
+  return { results, notes: notes.join('\n\n') };
 }
 
 export type ImplementerResult = { kind: 'done' | 'gap' | 'failed'; detail: string } | { kind: 'invalid' };

@@ -700,6 +700,36 @@
           "group": "3_stop@1"
         },
         {
+          "command": "uspec.agents.approve",
+          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.reject",
+          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "group": "inline@2"
+        },
+        {
+          "command": "uspec.agents.showRunDiff",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.runDoc/",
+          "group": "inline@3"
+        },
+        {
+          "command": "uspec.agents.showRunDiff",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.runDoc/",
+          "group": "1_run@2"
+        },
+        {
+          "command": "uspec.agents.approve",
+          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "group": "2_approve@1"
+        },
+        {
+          "command": "uspec.agents.reject",
+          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "group": "2_approve@2"
+        },
+        {
           "command": "uspec.context.copy",
           "when": "view == uspec.node && viewItem == uspec.contextGroup",
           "group": "inline@1"
@@ -737,7 +767,12 @@
         "uspec.agents.model": {
           "type": "string",
           "default": "",
-          "description": "Model for agent runs (an alias such as `opus` or a full model name). Empty uses Claude Code's default."
+          "description": "Model for writer, implementer and reviewer runs (an alias such as `opus` or a full model name). Empty uses Claude Code's default."
+        },
+        "uspec.agents.triageModel": {
+          "type": "string",
+          "default": "sonnet",
+          "description": "Model for triage runs, which only judge whether documents are affected and write nothing (an alias such as `sonnet` or a full model name). Empty uses Claude Code's default."
         },
         "uspec.agents.maxParallel": {
           "type": "number",

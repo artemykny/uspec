@@ -36,8 +36,8 @@ The [shared rules](../overview.md#shared-rules) of all skills apply. In addition
 
 1. Runs `uspec change next <name>`.
 2. **Triage.** For a `triage` batch, starts one triage subagent and records each decision with `uspec change set <name> <document> affected | no-change --reason "<reason>"`. A candidate left without a decision goes to a new triage run.
-3. **Write.** For each document under `write`, runs `uspec context <node> --document <id> --change <name>` and starts a writer subagent with it. All writers of one `next` start at once and run in parallel.
-4. Handles each writer's result:
+3. **Write.** For each node under `write`, runs `uspec context <node> --document <id>... --change <name>`, with one `--document` per document listed for the node, and starts one writer subagent with it. All writers of one `next` start at once and run in parallel.
+4. Handles each writer's results, one per document:
    - `updated`: if it is user-visible, shows the diff and waits for approval; then records `updated`, which propagates.
    - `no change`: records `no-change` with the writer's reason.
    - `blocked`: stops, explains the conflict to the user, and edits the upstream document with them as in step 5 of **Start a change** ([nothing travels upstream](../../method/agents/rules.md)).
@@ -59,6 +59,6 @@ Each subagent's prompt is a file next to the skill, followed by the CLI output i
 | Subagent | Prompt | Started with | Returns |
 |---|---|---|---|
 | Triage | `triage-agent.md` | the batch exactly as `uspec change next` printed it: the files under `read` and the candidates under `batch` with the rules that reached them | one line per candidate, in batch order: `<document path> \| affected \| <reason>` or `<document path> \| no-change \| <reason>`, then optional notes, such as a link that seems missing |
-| Writer | `writer-agent.md` | the output of `uspec context <node> --document <id> --change <name>` | `updated` with a one-line summary and `user-visible: yes \| no`; `no change` with a reason; or `blocked` with the upstream document that needs to change and why |
+| Writer | `writer-agent.md` | the output of `uspec context <node> --document <id>... --change <name>`, one `--document` per document of the node under `write` | one result per document, in the order given: `updated` with a one-line summary and `user-visible: yes \| no`; `no change` with a reason; or `blocked` with the upstream document that needs to change and why |
 
-Triage edits no file; it decides every candidate on its own text, with a one-line reason that can be checked against the document. A writer edits only its document. A change is user-visible when it touches an API, a user story, a business rule or text users read.
+Triage edits no file; it decides every candidate on its own text, with a one-line reason that can be checked against the document. Triage runs on Sonnet, since it only judges; writers run on the main agent's model. A writer edits only its documents and decides each one on its own. A change is user-visible when it touches an API, a user story, a business rule or text users read.

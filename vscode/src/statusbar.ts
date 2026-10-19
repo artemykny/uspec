@@ -38,7 +38,7 @@ export class StatusBar implements vscode.Disposable {
     const c = p?.activeChange;
     if (p && c) {
       const running = this.agents.runsOf(p, c.name).filter((r) => r.state === 'running').length;
-      const waiting = this.agents.runsOf(p, c.name).filter((r) => r.state === 'needs-approval').length;
+      const waiting = this.agents.waiting(p, c.name);
       const extra = [running ? `${running} running` : '', waiting ? `${waiting} to approve` : ''].filter(Boolean);
       this.change.text = `${running ? '$(loading~spin)' : '$(git-pull-request-draft)'} ${c.name} · ${[summary(c), ...extra].join(' · ')}`;
       this.change.tooltip = `uspec change ${c.name}${p.changes.length > 1 ? ` (${p.changes.length} open)` : ''}`;

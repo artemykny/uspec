@@ -317,8 +317,8 @@ pub struct Next {
     pub diffs: Vec<String>,
     /// Pending candidates ready for triage, with the rules that reached them.
     pub batch: Vec<(String, Vec<String>)>,
-    /// Affected documents ready to be written.
-    pub write: Vec<String>,
+    /// Affected documents ready to be written, by node: one writer per entry.
+    pub write: Vec<(String, Vec<String>)>,
     /// Nodes ready to be implemented.
     pub implement: Vec<String>,
 }
@@ -339,8 +339,13 @@ pub fn compute_next(change: &Change, tree: &Tree, types: &Types) -> Next {
         .filter(|(k, d)| d.state == DocState::Pending && ready(k))
         .map(|(k, d)| (k.clone(), d.via.clone()))
         .collect();
-    let write: Vec<String> =
-        docs.iter().filter(|(k, d)| d.state == DocState::Affected && ready(k)).map(|(k, _)| k.clone()).collect();
+    // A node's ready affected documents are written together, by one writer.
+    let mut write: IndexMap<String, Vec<String>> = IndexMap::new();
+    for (k, _) in docs.iter().filter(|(k, d)| d.state == DocState::Affected && ready(k)) {
+        let (node, _) = split_doc(k);
+        write.entry(show_node(&node).to_string()).or_default().push(k.clone());
+    }
+    let write: Vec<(String, Vec<String>)> = write.into_iter().collect();
     let batch_keys: HashSet<&String> = batch.iter().map(|(k, _)| k).collect();
     let diffs: Vec<String> = if batch.is_empty() {
         vec![]
@@ -386,7 +391,10 @@ pub fn cmd_next(project: &Project, types: &Types, tree: &Tree, name: &str, out: 
             "change": name,
             "baseline": c.status.baseline,
             "triage": triage,
-            "write": n.write.iter().map(|k| json!({ "document": k, "path": project.spec_file(k) })).collect::<Vec<_>>(),
+            "write": n.write.iter().map(|(node, docs)| json!({
+                "node": node,
+                "documents": docs.iter().map(|k| json!({ "document": k, "path": project.spec_file(k) })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
             "implement": n.implement.iter().map(|k| json!({ "node": k })).collect::<Vec<_>>(),
         }));
     }
@@ -406,8 +414,11 @@ pub fn cmd_next(project: &Project, types: &Types, tree: &Tree, name: &str, out: 
         println!("write:      none");
     } else {
         println!("write:");
-        for k in &n.write {
-            println!("  {}", project.spec_file(k));
+        for (node, docs) in &n.write {
+            println!("  {node}");
+            for k in docs {
+                println!("    {}", project.spec_file(k));
+            }
         }
     }
     if n.implement.is_empty() {

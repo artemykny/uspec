@@ -117,8 +117,10 @@ fn change_flow() {
                 p.ok(&["change", "set", c, &d, state, "--reason", "test"]);
             }
         }
-        for d in docs(&next, "write") {
-            p.ok(&["change", "set", c, &d, "updated"]);
+        for w in next["write"].as_array().unwrap() {
+            for d in docs(w, "documents") {
+                p.ok(&["change", "set", c, &d, "updated"]);
+            }
         }
     }
     let next = p.json(&["change", "next", c]);
@@ -135,6 +137,57 @@ fn change_flow() {
     p.ok(&["change", "set", c, "system/services/payments", "done"]);
     p.ok(&["change", "close", c]);
     assert!(p.ok(&["change", "list"]).contains("No open changes"));
+}
+
+fn write_entries(next: &Value) -> Vec<(String, Vec<String>)> {
+    next["write"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| (w["node"].as_str().unwrap().to_string(), docs(w, "documents")))
+        .collect()
+}
+
+#[test]
+fn change_next_writes_by_node() {
+    let p = Project::example("write-by-node");
+    let c = "refund-window";
+    p.ok(&["change", "new", c]);
+    fs::write(p.dir.join("docs/product/support/refunds/rules.md"), "30 days\n").unwrap();
+    p.ok(&["change", "set", c, "product/support/refunds/rules.md", "updated"]);
+
+    // api.md and compliance.md are ready together; logic.md derives from api.md and waits.
+    let api = "system/services/payments/api.md";
+    let compliance = "system/services/payments/compliance.md";
+    let next = p.json(&["change", "next", c]);
+    let batch = docs(&next["triage"], "batch");
+    assert!(batch.contains(&api.to_string()) && batch.contains(&compliance.to_string()));
+    for d in &batch {
+        let state = if d == api || d == compliance { "affected" } else { "no-change" };
+        p.ok(&["change", "set", c, d, state, "--reason", "test"]);
+    }
+
+    // One writer for both documents of the node.
+    let next = p.json(&["change", "next", c]);
+    let write = write_entries(&next);
+    let payments: Vec<&(String, Vec<String>)> = write.iter().filter(|(n, _)| n == "system/services/payments").collect();
+    assert_eq!(payments.len(), 1, "one entry per node: {write:?}");
+    assert_eq!(payments[0].1, vec![api.to_string(), compliance.to_string()]);
+    assert!(next["write"][0]["documents"][0]["path"].as_str().unwrap().starts_with("docs/"));
+    let text = p.ok(&["change", "next", c]);
+    assert!(text.contains("write:\n  system/services/payments\n    docs/system/services/payments/api.md\n"), "{text}");
+
+    // logic.md becomes ready once api.md is written: a second writer for the same node.
+    p.ok(&["change", "set", c, api, "updated"]);
+    p.ok(&["change", "set", c, compliance, "updated"]);
+    let next = p.json(&["change", "next", c]);
+    let batch = docs(&next["triage"], "batch");
+    let logic = "system/services/payments/logic.md";
+    assert!(batch.contains(&logic.to_string()));
+    p.ok(&["change", "set", c, logic, "affected", "--reason", "test"]);
+    let next = p.json(&["change", "next", c]);
+    let write = write_entries(&next);
+    assert!(write.contains(&("system/services/payments".to_string(), vec![logic.to_string()])), "{write:?}");
 }
 
 #[test]

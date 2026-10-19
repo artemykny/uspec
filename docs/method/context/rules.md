@@ -1,21 +1,21 @@
 # Context
 
-An agent's **context** is the set of files and instructions it is given to do one job: write one document of one node, or implement one node. It is decided by the tree, its [node types](../node-types/) and its [links](../links/), not by the agent, so two agents doing the same job read the same things. It holds what the job is built from and nothing more, which keeps context small and makes a missing dependency visible.
+An agent's **context** is the set of files and instructions it is given to do one job: write documents of one node, or implement one node. It is decided by the tree, its [node types](../node-types/) and its [links](../links/), not by the agent, so two agents doing the same job read the same things. It holds what the job is built from and nothing more, which keeps context small and makes a missing dependency visible.
 
 ## Rules
 
-**Writing a document.** The context of an agent writing one document of a node is:
+**Writing documents.** The context of an agent writing one or more documents of a node is:
 
 - **Instructions**: the `instructions` of the node's type.
-- **Document**: the document itself.
+- **Documents**: the documents it writes.
 - **Ancestors**: the documents of every ancestor of the node, from the root down.
-- **Upstream**: the exposed documents of the node's upstream nodes (see [links](../links/)), and the documents of the same node that this document derives from (see [node types](../node-types/)).
-- **Template**: the document's template. Its `description` says what the document covers; its body is the structure the document follows.
+- **Upstream**: the exposed documents of the node's upstream nodes (see [links](../links/)), and the documents of the same node that any of these documents derives from (see [node types](../node-types/)).
+- **Templates**: each written document's template. Its `description` says what the document covers; its body is the structure the document follows.
 - **Change**: during a [change](../changes/), the change's description and the diffs, since the change's baseline, of the documents in the context above that the change updated.
 
 **Implementing a node.** The context of an agent implementing a node is:
 
-- **Instructions**, **ancestors** and **upstream** as for writing a document;
+- **Instructions**, **ancestors** and **upstream** as for writing documents;
 - **Documents**: all of the node's documents, internal ones included;
 - **Code**: the node's code paths;
 - **Change**: during a change, its description and the diffs of the updated documents among the files above.

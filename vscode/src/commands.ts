@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { AgentManager, AgentRun } from './agents';
+import { writerDocs } from './core/agents';
 import { runJson, UspecError } from './core/cli';
 import { CONTEXT_GROUPS, type ContextJson, type NextJson, type SetJson } from './core/model';
 import { baseName, docKey, join, nodeKey, showNode, splitDoc } from './core/paths';
@@ -125,6 +126,8 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
   };
 
   const runArg = (arg: any): AgentRun | undefined => arg?.run;
+  /** The writer document a run action is on, when it is on one (a `runDoc` item). */
+  const runDocArg = (arg: any): string | undefined => (typeof arg?.key === 'string' ? arg.key : undefined);
 
   const open = async (uri: vscode.Uri) => vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: false });
 
@@ -614,10 +617,17 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
       void vscode.window.showInformationMessage(`Only affected documents get a writer; ${key} is ${state ?? 'not in the change'}.`);
       return;
     }
+    if (agents.isBusy(d.p, name, key)) {
+      void vscode.window.showInformationMessage(`${key} is already being written or waits for approval.`);
+      return;
+    }
+    // The writer of the document's node, with that document and the node's other documents under `write`.
     const next = await manager.json<NextJson>(d.p, ['change', 'next', name]);
-    if (!next.write.some((w) => w.document === key) && !(await confirmNotReady(key, 'an unsettled document can still reach it.'))) return;
-    await saveIfDirty(d.p.uriOf(d.p.docFile(key)));
-    await agents.runWriter(d.p, name, key);
+    const w = writerDocs(next, key);
+    if (!w.ready && !(await confirmNotReady(key, 'an unsettled document can still reach it.'))) return;
+    const docs = w.documents.filter((x) => x === key || !agents.isBusy(d.p, name, x));
+    for (const x of docs) await saveIfDirty(d.p.uriOf(d.p.docFile(x)));
+    await agents.runWriter(d.p, name, w.node, docs);
   });
 
   reg('uspec.agents.runImplementer', async (arg?: any) => {
@@ -647,15 +657,15 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
   });
   reg('uspec.agents.approve', async (arg?: any) => {
     const r = runArg(arg);
-    if (r) await agents.approve(r);
+    if (r) await agents.approve(r, runDocArg(arg));
   });
   reg('uspec.agents.reject', async (arg?: any) => {
     const r = runArg(arg);
-    if (r) await agents.reject(r);
+    if (r) await agents.reject(r, runDocArg(arg));
   });
   reg('uspec.agents.showRunDiff', async (arg?: any) => {
     const r = runArg(arg);
-    if (r) await agents.showDiff(r);
+    if (r) await agents.showDiff(r, runDocArg(arg));
   });
   reg('uspec.agents.openSession', (arg?: any) => {
     const r = runArg(arg);

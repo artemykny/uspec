@@ -13,13 +13,13 @@ Works with [uspec](../docs/overview.md) projects: the spec tree with its types a
 - **Spec Tree**: nodes with their types, documents and children; new, move and remove nodes through `uspec node`; Go to Node.
 - **Node**: the node of the active file, its template, upstream and downstream nodes, code paths, drift, and the context an agent reads, which can be copied.
 - **Changes**: open changes with what is ready to triage, write and implement, every document's state, and the agent runs. Record states, diff documents against the baseline, review all diffs, close the change.
-- **Agents**: **Run Agents** on a change runs triage, writer and implementer agents with Claude Code, one per item, with the prompts from the uspec skills, and records their results with `uspec change set`. Writer updates can wait for your approval (`uspec.agents.approveWrites`). Every run has a live log and can be resumed in a terminal.
+- **Agents**: **Run Agents** on a change runs triage, writer and implementer agents with Claude Code, with the prompts from the uspec skills (one triage run per batch, one writer per node with documents to write, one implementer per node), and records their results with `uspec change set`. Triage runs on `uspec.agents.triageModel` (`sonnet` by default), the others on `uspec.agents.model`. A writer returns a result per document; updates can wait for your approval (`uspec.agents.approveWrites`). Every run has a live log and can be resumed in a terminal.
 - **Claude Code sessions**: start a change with `/uspec-spec`, or continue or implement one, in a terminal.
 - **Problems, badges and editing help**: `uspec validate` errors on the right line, drift warnings, change states in the Explorer, completion and links in `node.yaml`, `node-type.yaml` and template frontmatter, and a line at the top of each spec document with its template and actions.
 
 ## Agents and permissions
 
-Agent runs are `claude -p` in the project root. They can't ask for permission, so anything outside their rules is denied: triage and reviewers only read and run `git diff`, `git show` and `git log`; a writer may also edit its document and its `-extra/` folder; an implementer may edit its node's code paths and gets `uspec.agents.implementerAllowedTools` on top (`Bash` by default, so it can run tests). Runs cost what Claude Code costs; each run's cost is shown next to it.
+Agent runs are `claude -p` in the project root. They can't ask for permission, so anything outside their rules is denied: triage and reviewers only read and run `git diff`, `git show` and `git log`; a writer may also edit its documents and their `-extra/` folders; an implementer may edit its node's code paths and gets `uspec.agents.implementerAllowedTools` on top (`Bash` by default, so it can run tests). Runs cost what Claude Code costs; each run's cost is shown next to it.
 
 ## Develop
 

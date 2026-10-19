@@ -1,27 +1,27 @@
 # uspec context
 
 ```
-uspec context <node> --document <id> [--change <name>]
+uspec context <node> --document <id> [--document <id>...] [--change <name>]
 uspec context <node> --implement [--change <name>]
 ```
 
 ## Behaviour
 
-Prints the [context](../../method/context/) of one job: writing document `<id>` of `<node>`, or implementing `<node>`. It prints the type's instructions, then the files to read, grouped by why they're read. Skills give an agent exactly this output.
+Prints the [context](../../method/context/) of one job: writing documents `<id>` of `<node>`, or implementing `<node>`. `--document` can be given more than once; the output is then one context for writing all the given documents together. It prints the type's instructions, then the files to read, grouped by why they're read. Skills give an agent exactly this output.
 
 With `--document <id>`, the groups are, in order:
 
-- `document`: the document itself;
+- `document`: the documents being written, in the order given;
 - `ancestors`: the documents of every ancestor, the root first;
-- `upstream`: the exposed documents of each linked node, then the node's own documents that the template's `derives_from` names. A document without a template counts as exposed. A link to a node that doesn't exist is skipped (`validate` reports it);
+- `upstream`: the exposed documents of each linked node, then the node's own documents that any written document's template names in `derives_from`, except the ones being written. A document without a template counts as exposed. A link to a node that doesn't exist is skipped (`validate` reports it);
 - `change`: with `--change`, see below;
-- `template`: `.uspec/node-types/<type>/<id>.md`.
+- `template`: `.uspec/node-types/<type>/<id>.md` for each written document, in the same order.
 
 With `--implement`: `ancestors` and `upstream` as above (without `derives_from` documents), `documents` (all of the node's documents, internal ones included), `change`, and `code` (the node's code paths).
 
 A document's `-extra/` folder is listed right after it, in every group.
 
-With `--change <name>`, the `change` group holds the change's `change.md`, then every document the change has recorded as `updated` that is already listed in the groups above (the document being written excepted), marked `diff since <baseline>`. The agent reads it with `git diff <baseline> -- <path>`.
+With `--change <name>`, the `change` group holds the change's `change.md`, then every document the change has recorded as `updated` that is already listed in the groups above (the documents being written excepted), marked `diff since <baseline>`. The agent reads it with `git diff <baseline> -- <path>`.
 
 ## Output
 
@@ -63,7 +63,7 @@ JSON (`--json`), for the same call:
 {
   "node": "system/services/payments",
   "type": "service",
-  "document": "logic",
+  "documents": ["logic"],
   "instructions": { "type": "Service", "text": "A Service is one deployable backend service, ..." },
   "files": {
     "document": [{ "path": "docs/system/services/payments/logic.md", "note": null }],
@@ -79,7 +79,7 @@ JSON (`--json`), for the same call:
 }
 ```
 
-`document` is `null` with `--implement`; `instructions.text` is `null` for a type without instructions; `baseline` is the change's full baseline commit, or `null` without `--change`. Every group of the mode is present, empty ones as `[]`; `change` only with `--change`.
+`documents` lists the ids being written, in the order given, and is `[]` with `--implement`; `instructions.text` is `null` for a type without instructions; `baseline` is the change's full baseline commit, or `null` without `--change`. Every group of the mode is present, empty ones as `[]`; `change` only with `--change`.
 
 ## Errors
 

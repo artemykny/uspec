@@ -108,12 +108,28 @@ describe('uspec extension', () => {
     assert.strictEqual(done.counts.pending + done.counts.affected, 0, 'every document is settled');
     assert.strictEqual(done.docs.get('system/services/payments/logic.md')?.state, 'updated');
     assert.strictEqual(done.docs.get('system/services/payments/api.md')?.state, 'no-change');
+    assert.strictEqual(done.docs.get('system/services/payments/compliance.md')?.state, 'updated');
     assert.strictEqual(done.impl.get('system/services/payments'), 'done');
     assert.ok(fs.readFileSync(file('docs/system/services/payments/logic.md'), 'utf8').includes('30 days'));
+    assert.ok(!fs.readFileSync(file('docs/system/services/payments/api.md'), 'utf8').includes('30 days'));
 
     const runs = api.agents.runsOf(p, c);
     assert.ok(runs.some((r) => r.role === 'triage' && r.state === 'recorded'));
-    assert.ok(runs.some((r) => r.role === 'writer' && r.item === 'system/services/payments/logic.md' && r.state === 'recorded'));
+    // One writer for the two documents of payments that were ready together, each with its own result;
+    // logic.md, which waited for api.md, got a writer run of its own.
+    const writers = runs.filter((r) => r.role === 'writer');
+    const both = writers.find((r) => r.docs.length === 2)!;
+    assert.ok(both, 'one writer run wrote two documents');
+    assert.strictEqual(both.item, 'system/services/payments');
+    assert.strictEqual(both.state, 'recorded');
+    assert.deepStrictEqual(
+      both.docs.map((d) => [d.key, d.state, d.outcome.split(' ·')[0]]),
+      [
+        ['system/services/payments/api.md', 'recorded', 'no change'],
+        ['system/services/payments/compliance.md', 'recorded', 'updated'],
+      ],
+    );
+    assert.ok(writers.some((r) => r.item === 'system/services/payments' && r.docs.map((d) => d.key).join() === 'system/services/payments/logic.md' && r.state === 'recorded'));
     assert.ok(runs.some((r) => r.role === 'implementer' && r.state === 'recorded'));
     assert.ok(runs.every((r) => r.sessionId?.startsWith('fake-')));
 
@@ -123,9 +139,15 @@ describe('uspec extension', () => {
       .trim()
       .split('\n')
       .map((l) => JSON.parse(l) as { role: string; args: string[] });
-    const writer = calls.find((x) => x.role === 'writer')!;
-    assert.ok(writer.args.includes('Edit(docs/system/services/payments/logic.md)'));
+    const writer = calls.find((x) => x.role === 'writer' && x.args.includes('Edit(docs/system/services/payments/compliance.md)'))!;
+    assert.ok(writer.args.includes('Edit(docs/system/services/payments/api.md)'));
+    assert.ok(writer.args.includes('Edit(docs/system/services/payments/api-extra/**)'));
+    assert.ok(!writer.args.includes('Edit(docs/system/services/payments/logic.md)'));
     assert.ok(!writer.args.some((a) => a.startsWith('Edit(services/')));
+    // Triage runs on the triage model (`sonnet` by default); the others on Claude Code's default.
+    const model = (x: { args: string[] }) => (x.args.includes('--model') ? x.args[x.args.indexOf('--model') + 1] : undefined);
+    assert.ok(calls.filter((x) => x.role === 'triage').every((x) => model(x) === 'sonnet'));
+    assert.ok(calls.filter((x) => x.role !== 'triage').every((x) => model(x) === undefined));
     const implementer = calls.find((x) => x.role === 'implementer')!;
     assert.ok(implementer.args.includes('Edit(services/payments/**)'));
     assert.ok(implementer.args.includes('Bash'));
@@ -140,6 +162,44 @@ describe('uspec extension', () => {
     await vscode.commands.executeCommand('uspec.change.close', { kind: 'change', p, name: c });
     await waitFor('the change to close', () => p.changes.length === 0);
     assert.ok(!fs.existsSync(file(`.uspec/changes/${c}`)));
+  });
+
+  it('runs a document’s node writer from Run writer', async function () {
+    this.timeout(60_000);
+    const c = 'run-writer';
+    const docs = ['api', 'compliance'].map((d) => `system/services/payments/${d}.md`);
+    const before = docs.map((d) => fs.readFileSync(file(`docs/${d}`), 'utf8'));
+    await api.manager.mutate(p, ['change', 'new', c]);
+    fs.writeFileSync(file(`.uspec/changes/${c}/change.md`), '# Refund window\n\nStarts at: product/support/refunds\n\nRefunds within 30 days.\n');
+    fs.writeFileSync(file('docs/product/support/refunds/rules.md'), '# Rules\n\nRefunds can be requested within 31 days.\n');
+    await api.manager.mutate(p, ['change', 'set', c, 'product/support/refunds/rules.md', 'updated']);
+    for (const d of docs) await api.manager.mutate(p, ['change', 'set', c, d, 'affected', '--reason', 'The window changes.']);
+    await api.manager.load(p);
+    assert.deepStrictEqual(
+      p.change(c)?.next?.write.map((w) => [w.node, w.documents.map((d) => d.document)]),
+      [['system/services/payments', docs]],
+    );
+
+    // Next lists the documents to write grouped by node.
+    const write = api.changes.getChildren({ kind: 'nextWrite', p, name: c });
+    assert.deepStrictEqual(write.map((w) => w.kind === 'writeNode' && w.node), ['system/services/payments']);
+    assert.deepStrictEqual(api.changes.getChildren(write[0]).map((d) => d.kind === 'doc' && d.key), docs);
+
+    try {
+      // Run writer on one document runs its node's writer, with the node's other document under `write`.
+      await vscode.commands.executeCommand('uspec.agents.runWriter', { kind: 'doc', p, name: c, key: docs[1], section: 'write' });
+      const run = api.agents.runsOf(p, c).find((r) => r.role === 'writer')!;
+      assert.strictEqual(run.item, 'system/services/payments');
+      assert.deepStrictEqual(run.docs.map((d) => d.key), docs);
+      assert.deepStrictEqual(api.changes.getChildren({ kind: 'run', run }).map((d) => d.kind === 'runDoc' && d.key), docs);
+      await api.manager.load(p);
+      assert.strictEqual(p.change(c)?.docs.get(docs[0])?.state, 'no-change');
+      assert.strictEqual(p.change(c)?.docs.get(docs[1])?.state, 'updated');
+    } finally {
+      docs.forEach((d, i) => fs.writeFileSync(file(`docs/${d}`), before[i]));
+      fs.rmSync(file(`.uspec/changes/${c}`), { recursive: true, force: true });
+      await api.manager.load(p);
+    }
   });
 
   it('copies a document’s context as the CLI prints it', async () => {

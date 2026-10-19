@@ -85,8 +85,9 @@ enum Cmd {
     /// Print what an agent reads to write a document or implement a node.
     Context {
         node: String,
+        /// A document to write; give it more than once to write several together.
         #[arg(long, conflicts_with = "implement")]
-        document: Option<String>,
+        document: Vec<String>,
         #[arg(long)]
         implement: bool,
         /// Add the change's description and diffs.
@@ -178,7 +179,7 @@ fn run(cmd: Cmd, out: &Out) -> Result<()> {
             &types,
             &tree,
             &node,
-            document.as_deref(),
+            &document,
             implement,
             change.as_deref(),
             out,

@@ -11,7 +11,7 @@ Each skill runs in the agent the user talks to and hands the work to subagents. 
 | Subagent | Prompt | One run per |
 |---|---|---|
 | Triage | [triage-agent.md](uspec-spec/triage-agent.md) | batch of candidates |
-| Writer | [writer-agent.md](uspec-spec/writer-agent.md) | affected document |
+| Writer | [writer-agent.md](uspec-spec/writer-agent.md) | node with documents to write |
 | Implementer | [implementer-agent.md](uspec-implement/implementer-agent.md) | node |
 | Reviewer | [reviewer-agent.md](uspec-review/reviewer-agent.md) | node |
 

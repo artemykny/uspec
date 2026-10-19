@@ -32,7 +32,10 @@ process.stdin.on('end', () => {
       .map((l) => l.trim().split(/\s{2,}/)[0])
       .filter((p) => p.endsWith('.md'))
       .map((p) =>
-        p.endsWith('system/services/payments/logic.md') && !fs.readFileSync(p, 'utf8').includes('30 days')
+        (p.endsWith('system/services/payments/logic.md') && !fs.readFileSync(p, 'utf8').includes('30 days')) ||
+        // Two documents of one node, ready together: they get one writer.
+        p.endsWith('system/services/payments/api.md') ||
+        p.endsWith('system/services/payments/compliance.md')
           ? `${p} | affected | The eligibility rule says 14 days.`
           : `${p} | no-change | The document doesn't depend on the refund window.`,
       );
@@ -40,14 +43,24 @@ process.stdin.on('end', () => {
     return;
   }
   if (role === 'writer') {
-    const doc = input.match(/^document:\n {2}(\S+)/m)?.[1];
-    if (!doc) {
+    // The documents are the files under `document:`, in order; `-extra/` folders are listed with them.
+    const group = input.split('\ndocument:\n')[1]?.split(/\n(?! {2})/)[0] ?? '';
+    const docs = group
+      .split('\n')
+      .map((l) => l.trim().split(/\s{2,}/)[0])
+      .filter((p) => p.endsWith('.md'));
+    if (!docs.length) {
       finish('blocked\nNo document in the context.', sessionId);
       return;
     }
-    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.resolve(doc) } }] }, session_id: sessionId });
-    fs.appendFileSync(doc, '\nRefunds can be requested within 30 days.\n');
-    finish('updated\nThe refund window is 30 days.\nuser-visible: yes', sessionId);
+    // logic.md and compliance.md get the new window; anything else doesn't mention it.
+    const results = docs.map((doc) => {
+      if (!/(logic|compliance)\.md$/.test(doc)) return `${doc}\nno change\nThe document doesn't mention the refund window.`;
+      emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.resolve(doc) } }] }, session_id: sessionId });
+      fs.appendFileSync(doc, '\nRefunds can be requested within 30 days.\n');
+      return `${doc}\nupdated\nThe refund window is 30 days.\nuser-visible: yes`;
+    });
+    finish(results.join('\n\n'), sessionId);
     return;
   }
   if (role === 'implementer') {

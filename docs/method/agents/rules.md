@@ -1,6 +1,6 @@
 # Agents
 
-An **agent** is one run of a model doing one job of a [change](../changes/). There are no separately defined agents: the job decides what an agent reads, which is its [context](../context/), and the document's template and the type's instructions tell it what to write. Each run that writes has one responsibility (see [method](../)), so judging, writing and coding are split across fresh runs with small contexts, and the work of a change can be done in parallel and picked up again at any point.
+An **agent** is one run of a model doing one job of a [change](../changes/). There are no separately defined agents: the job decides what an agent reads, which is its [context](../context/), and the documents' templates and the type's instructions tell it what to write. Each run that writes has one responsibility (see [method](../)), so judging, writing and coding are split across fresh runs with small contexts, and the work of a change can be done in parallel and picked up again at any point.
 
 ## Rules
 
@@ -10,16 +10,16 @@ An **agent** is one run of a model doing one job of a [change](../changes/). The
 |---|---|---|---|
 | Main agent | session with the user | what it needs to talk to the user | `change.md`, the starting edits, and the result of every other run |
 | Triage | batch of candidate documents | `change.md`, the diffs and the candidates | `affected` or `no-change`, with a reason, for each candidate |
-| Writer | `affected` document | the document's [context](../context/) | `updated`, or `no-change` with a reason |
+| Writer | node with ready `affected` documents | the [context](../context/) of those documents | for each document, `updated`, or `no-change` with a reason |
 | Implementer | node to implement | the node's [context](../context/) | `done` once its code is verified against its documents |
 
 **Main agent.** The agent the user talks to. It agrees `change.md` and the starting edits with the user, gets structure approved, hands every other job to a fresh run, and records each run's result in the change. It writes no other document and no code itself.
 
-**Triage is separate from writing.** Deciding whether a document is affected is cheaper than writing it, so it is done in batches, and only `affected` documents get a writer.
+**Triage is separate from writing.** Deciding whether a document is affected is cheaper than writing it, so it is done in batches, and only `affected` documents get a writer. Triage writes nothing, so it can run on a cheaper, faster model than writers and implementers.
 
-**One job per run.** A writer edits only its document; an implementer edits only its node's code paths. Neither carries anything over from another run: what it knows is its context.
+**One job per run.** A writer edits only its documents, and decides each one on its own; an implementer edits only its node's code paths. Neither carries anything over from another run: what it knows is its context.
 
-**Nothing travels upstream.** A writer that can't make its document consistent without changing an ancestor, a linked node or a document it derives from edits nothing and reports which document needs to change and why. The main agent takes it to the user; the upstream document changes only as part of the change, and propagation then reaches the document again.
+**Nothing travels upstream.** A writer that can't make a document consistent without changing an ancestor, a linked node or a document it derives from doesn't edit that document, and reports which document needs to change and why. The main agent takes it to the user; the upstream document changes only as part of the change, and propagation then reaches the document again.
 
 **Parallel runs.** Ready items in different nodes (see [changes](../changes/)) are given to separate runs at the same time.
 

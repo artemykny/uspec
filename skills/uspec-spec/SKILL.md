@@ -14,7 +14,7 @@ You work on the spec side of a uspec change: you talk to the user, write `change
 - **The CLI decides.** Take what to do next from `uspec change next`, and what an agent reads from `uspec context`. Don't pick files or order yourself.
 - **Name the change on every call.** Say which change you work on ("Using change: refund-window"). If more than one change is open and the user hasn't said which, run `uspec change list` and ask.
 - **Re-read from disk.** Files may have been edited since you last saw them. Read them again before you use them.
-- **One subagent per document.** You write `change.md` and the starting edits with the user. Every other document is written by its own writer subagent.
+- **One subagent per node.** You write `change.md` and the starting edits with the user. Every other document is written by a writer subagent, one per node: it writes that node's ready documents together.
 
 ## Pick the mode
 
@@ -49,7 +49,7 @@ Run `uspec change list`.
 Repeat until `uspec change next <name>` prints nothing under `triage` and `write`:
 
 1. Run `uspec change next <name>`.
-2. **Triage.** If there's a `triage` batch, start one triage subagent. Its prompt is [triage-agent.md](triage-agent.md) followed by the batch exactly as `next` printed it (the files under `read` and the candidates under `batch`, with their reasons). Record every decision it returns:
+2. **Triage.** If there's a `triage` batch, start one triage subagent with the Sonnet model (the Agent tool's `model: "sonnet"`): triage only judges, so it runs on a cheaper, faster model. Its prompt is [triage-agent.md](triage-agent.md) followed by the batch exactly as `next` printed it (the files under `read` and the candidates under `batch`, with their reasons). Record every decision it returns:
 
    ```
    uspec change set <name> <document> affected --reason "<reason>"
@@ -57,8 +57,8 @@ Repeat until `uspec change next <name>` prints nothing under `triage` and `write
    ```
 
    Every candidate in the batch must get a decision. If one is missing, start the triage subagent again for the missing ones.
-3. **Write.** For each document under `write`, run `uspec context <node> --document <id> --change <name>` and start one writer subagent. Its prompt is [writer-agent.md](writer-agent.md) followed by that output. Start all writers for one `next` in a single message, so they run in parallel.
-4. Handle each writer's result:
+3. **Write.** `write` lists nodes, each with its ready documents. For each node, run `uspec context <node> --document <id> --document <id>... --change <name>`, with one `--document` per document listed under the node (its id is the file name without `.md`), and start one writer subagent with it. Its prompt is [writer-agent.md](writer-agent.md) followed by that output. Writers keep your model: don't set `model` for them. Start all writers for one `next` in a single message, so they run in parallel.
+4. Each writer returns one result per document, in the order given. Handle each result:
    - **Updated.** If the change is one the user should see (an API, a user story, a business rule, text users read), show the diff and wait for approval. Then `uspec change set <name> <document> updated`.
    - **No change.** The writer found nothing to change: `uspec change set <name> <document> no-change --reason "<writer's reason>"`.
    - **Blocked.** The document can't be written without changing something upstream of it. Stop, explain the conflict to the user, and edit the upstream document with them first (as in step 5 of **Start a change**).
