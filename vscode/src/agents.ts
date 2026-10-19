@@ -31,7 +31,7 @@ import {
   type WriterResult,
 } from './core/agents';
 import type { ClaudeResult } from './core/claude';
-import { startTerminalAgent, revealAgentTerminal } from './agentTerminal';
+import { agentAlive, startTerminalAgent, revealAgentTerminal } from './agentTerminal';
 import { fileProposal, readFileProposal, readSplit, type FileDecision, type SplitPlan } from './core/workflow';
 import type { NextJson, SetJson } from './core/model';
 import { isTemplateLeft } from './core/templates';
@@ -965,7 +965,9 @@ export class AgentManager implements vscode.Disposable {
 
   openSession(run: AgentRun): void {
     if (run.terminal && vscode.window.terminals.includes(run.terminal)) {
-      if (run.state !== 'running' && run.sessionId && !run.resumed) {
+      // After its first turn the agent's session stays open in its terminal; once it exits, it is resumed there.
+      if (agentAlive(run.terminal)) run.resumed ||= run.state !== 'running';
+      else if (run.state !== 'running' && run.sessionId && !run.resumed) {
         const executable = agentOrComplain(run.provider);
         if (executable) { run.terminal.sendText((process.platform === 'win32' ? '& ' : '') + [executable, ...resumeArgs(run.provider, run.sessionId), ...(run.proposal ? [`Continue reviewing ${run.proposal}. Apply agreed revisions to that Markdown document, preserving its review format.`] : [])].map(quote).join(' ')); run.resumed = true; }
       }

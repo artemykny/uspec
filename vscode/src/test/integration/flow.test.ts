@@ -410,12 +410,12 @@ describe('uspec extension', () => {
       assert.ok(runs.every(r => r.provider === 'codex'));
       assert.ok(runs.filter(r => r.sessionId).every(r => r.sessionId!.startsWith('fake-')));
       for (const call of calls) {
-        assert.ok(call.args.includes('exec') && call.args.includes('--json'));
+        assert.ok(!call.args.includes('exec') && !call.args.includes('--json'), 'Codex runs in its interactive TUI');
         const readOnly = ['impact', 'triage', 'splitter', 'reviewer'].includes(call.role);
         assert.strictEqual(call.args[call.args.indexOf('--sandbox') + 1], readOnly ? 'read-only' : 'workspace-write');
         assert.ok(call.args.includes('approval_policy="never"'));
         assert.ok(!call.args.includes('--model'), 'Claude model aliases must not reach Codex');
-        assert.match(call.input, /You run non-interactively/);
+        assert.match(call.input, /You run in a terminal started by the uspec VS Code extension/);
       }
       assert.ok(calls.some(c => c.args.includes('resume')), 'later writer uses the same Codex thread');
     } else {

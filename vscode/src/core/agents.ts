@@ -138,24 +138,25 @@ export function permissions(
 }
 
 /**
- * What a headless run is told about where it runs, so it doesn't spend turns on commands that will
- * be denied: compound shell commands and `git -C` don't match the allowed rules.
+ * What a run is told about where it runs, so it doesn't spend turns on commands that will be denied:
+ * compound shell commands and `git -C` don't match the allowed rules.
  */
-export function headlessNote(p: Permissions): string {
+export function runNote(p: Permissions): string {
   const edits = p.allowed.filter((a) => a.startsWith('Edit(')).map((a) => a.slice(5, -1));
   return [
-    'You run headless, started by the uspec VS Code extension in the project root. Nobody can answer a permission prompt: anything outside your allowed tools is denied.',
+    'You run in a terminal started by the uspec VS Code extension in the project root. Permission prompts are not shown: anything outside your allowed tools is denied.',
+    'Work without asking questions: the final message of your first turn is read as your result.',
     'Read files with the Read tool, one call per file. Run git as `git diff <commit> -- <path>` from the current directory: no `git -C`, no pipes, loops or chained commands.',
     edits.length ? `You may edit only: ${edits.join(', ')}.` : 'You may not edit any file.',
   ].join(' ');
 }
 
-/** Arguments for `claude -p` with the prompt on stdin. */
+/** Arguments for interactive `claude`; the prompt comes after them. */
 export function claudeArgs(p: Permissions, opts: { model?: string; name?: string } = {}): string[] {
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--permission-prompts', 'none'];
+  const args = ['--strict-mcp-config', '--permission-mode', 'dontAsk'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.name) args.push('--name', opts.name);
-  args.push('--append-system-prompt', headlessNote(p));
+  args.push('--append-system-prompt', runNote(p));
   args.push('--tools', p.tools.join(','));
   if (p.allowed.length) args.push('--allowedTools', ...p.allowed);
   return args;
@@ -338,7 +339,7 @@ export function parseReview(text: string): { findings: number } {
   return { findings: lines.filter((l) => /^(contradiction|gap|missing link)\b/i.test(l)).length };
 }
 
-/** One line of a run's log for an event of Claude Code's stream-json output, or none. */
+/** One line of a run's log for a message of Claude Code's transcript (as in its stream-json output), or none. */
 export function describeEvent(e: any): string[] {
   switch (e?.type) {
     case 'system':

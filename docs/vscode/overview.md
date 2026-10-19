@@ -71,7 +71,7 @@ Completed steps can be revisited without undoing recorded changes. Agent status 
 
 ## Agents
 
-Agents are Claude Code or Codex runs started in native VS Code terminals, hidden until requested. Automated Claude runs use `claude -p --output-format stream-json` with the prompt on stdin and a result sidecar; terminal output remains visible through the regular terminal. Opening a run reveals only its terminal in the editor. After completion, Continue resumes its exact session with the original provider in that terminal. Input is never replaced by a webview chat. Each run does one job of the active change, as in [agents](../method/agents/rules.md); the extension is the orchestrator that starts them and records their results, and the user approves through the views.
+Agents are Claude Code or Codex runs started in native VS Code terminals, hidden until requested. A run is the provider's own interactive TUI (`claude` or `codex`, never `claude -p` or `codex exec`) with the prompt as its first message, so its terminal shows the real agent session, not a log of headless output. The extension never reads the terminal: the agent's hooks (Claude Code's `SessionStart` and `Stop` hooks via `--settings`, Codex's `notify` program) append the session id and each turn's final message to a sidecar file, and the final message of the first turn is the run's result. A run fails when the agent exits or its terminal closes before that turn ends. After its first turn the session stays open in its terminal for the user, and opening a run reveals only its terminal in the editor. Once the agent has exited, Continue resumes its exact session with the original provider in that terminal; a new automated run in the same session ends a still-open one first. Input is never replaced by a webview chat. Each run does one job of the active change, as in [agents](../method/agents/rules.md); the extension is the orchestrator that starts them and records their results, and the user approves through the views.
 
 **Roles.**
 
@@ -85,11 +85,11 @@ Agents are Claude Code or Codex runs started in native VS Code terminals, hidden
 | Implementer | plan under `implement` | `uspec-spec/implementer-agent.md` | `Mode: implement`, or `Mode: check` when `change.md` has `mode: check` in its YAML frontmatter, then `Plan: <path of the plan>`, then for each of its nodes `## <node>` and `uspec context <node> --implement --change <name>` |
 | Reviewer | node | `uspec-review/reviewer-agent.md` | the node's `uspec context` output, as `uspec-review` gives it |
 
-The provider is selected in `uspec.agents.provider` (Claude Code by default). Codex automated runs use `codex exec --json` with stdin input, capture the thread id and final agent message, and require a successful turn and process exit. Each run persists its provider; changing settings affects new runs, never the provider used to resume an existing session. Codex models have separate settings, so Claude aliases are never passed to Codex. Codex uses read-only sandboxing for impact, triage, splitter and review, and workspace-write for writer, planner and implementer, with approval prompts disabled. File scope is a prompt instruction for Codex, not the per-file permission enforcement available in Claude. Codex retains the user’s CLI configuration and authentication.
+The provider is selected in `uspec.agents.provider` (Claude Code by default). Codex runs take the thread id and final agent message from its `agent-turn-complete` notification. Each run persists its provider; changing settings affects new runs, never the provider used to resume an existing session. Codex models have separate settings, so Claude aliases are never passed to Codex. Codex uses read-only sandboxing for impact, triage, splitter and review, and workspace-write for writer, planner and implementer, with approval prompts disabled. File scope is a prompt instruction for Codex, not the per-file permission enforcement available in Claude. Codex retains the user’s CLI configuration and authentication.
 
 A prompt is read from the selected provider’s skill directory (`.claude/skills/` for Claude, `.agents/skills/` for Codex), then the corresponding directory in the user’s home, then the copy of [skills/](../../skills/) bundled with the extension.
 
-**Claude permissions.** A run can't ask for permission: anything it isn't allowed is denied. MCP servers are not loaded. Its system prompt says so, and names what it may edit, so it doesn't spend turns on commands that would be denied (a loop or a `git -C` doesn't match the rules).
+**Claude permissions.** A run runs in `dontAsk` permission mode, so it can't ask for permission: anything it isn't allowed is denied. MCP servers are not loaded. Its system prompt says so, and names what it may edit, so it doesn't spend turns on commands that would be denied (a loop or a `git -C` doesn't match the rules).
 
 | Role | Tools | Allowed |
 |---|---|---|
@@ -153,9 +153,10 @@ TypeScript in [vscode/](../../vscode/), bundled with esbuild into `dist/extensio
 | `src/core/issues.ts` | Where a `validate` error goes: file and line |
 | `src/core/yaml.ts` | Which key and list the cursor is in, in `node.yaml`, `node-type.yaml` and frontmatter |
 | `src/core/templates.ts` | Template bodies, unwritten documents, leftover guidance |
-| `src/core/agents.ts` | Agent prompts, inputs, tools and permission rules per role, the headless system prompt, result parsing |
+| `src/core/agents.ts` | Agent prompts, inputs, tools and permission rules per role, the system prompt a run gets, result parsing |
 | `src/core/links.ts` | Links and sections: parsing a link, a document's headings and anchors |
-| `src/core/claude.ts` | Starts `claude -p` and reads its stream |
+| `src/core/claude.ts` | Starts `claude -p` and reads its stream (unused by runs); the result shape of a run |
+| `src/agentTerminal.ts` | Runs an agent's TUI in a terminal and reads its hooks' sidecar |
 | `src/projects.ts` | Finds projects, loads them, refreshes on file changes |
 | `src/views/*.ts` | Spec Tree, Node, Changes and Node Types views, and the change state window |
 | `src/decorations.ts`, `src/diagnostics.ts`, `src/editing.ts`, `src/codelens.ts`, `src/statusbar.ts` | Badges, problems, completion and links, document lenses, status bar |

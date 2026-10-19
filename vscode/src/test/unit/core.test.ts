@@ -269,7 +269,8 @@ describe('agents', () => {
     assert.ok(impl.allowed.includes('Bash'));
     assert.ok(!permissions('triage').tools.includes('Edit'));
     const args = claudeArgs(perms, { model: 'opus', name: 'uspec writer' });
-    assert.deepStrictEqual(args.slice(0, 7), ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--permission-prompts', 'none']);
+    assert.deepStrictEqual(args.slice(0, 3), ['--strict-mcp-config', '--permission-mode', 'dontAsk']);
+    assert.ok(!args.includes('-p'), 'runs in the interactive TUI');
     assert.strictEqual(args[args.indexOf('--model') + 1], 'opus');
     assert.strictEqual(args[args.length - perms.allowed.length - 1], '--allowedTools');
     assert.match(args[args.indexOf('--append-system-prompt') + 1], /You may edit only: docs\/a\/api\.md, docs\/a\/logic\.md, docs\/a\/api-extra\/\*\*\./);

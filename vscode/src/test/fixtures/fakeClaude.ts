@@ -1,31 +1,35 @@
-// A stand-in for `claude -p` in the integration tests: reads the prompt on stdin, answers in the
-// role's output format with stream-json events, and edits what a real agent would.
+// A stand-in for interactive `claude` and `codex` in the integration tests: takes the prompt after `--`,
+// answers in the role's output format, reports it through the hooks a real agent calls, and edits what
+// a real agent would.
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync, spawnSync } from 'child_process';
 
 const args = process.argv.slice(2);
-const codex = args.includes('exec');
+const codex = !args.includes('--settings');
 const log = process.env.FAKE_CLAUDE_LOG;
+const input = args.at(-1) ?? '';
+const sessionId = args.includes('resume') ? args[args.indexOf('resume') + 1] : args.includes('--resume') ? args[args.indexOf('--resume') + 1] : `fake-${process.pid}`;
 
-function emit(e: object): void {
-  process.stdout.write(JSON.stringify(e) + '\n');
-}
-
-function finish(result: string, sessionId: string): void {
+/** Calls the hooks: Claude Code's from `--settings`, Codex's `notify` program. */
+function hook(event: string, fields: object): void {
   if (codex) {
-    emit({ type: 'item.completed', item: { type: 'agent_message', text: result } });
-    emit({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 20 } });
+    if (event !== 'Stop') return;
+    const notify = JSON.parse(args.find((a) => a.startsWith('notify='))!.slice('notify='.length)) as string[];
+    spawnSync(notify[0], [...notify.slice(1), JSON.stringify({ type: 'agent-turn-complete', 'thread-id': sessionId, ...fields })]);
     return;
   }
-  emit({ type: 'assistant', message: { content: [{ type: 'text', text: result }] }, session_id: sessionId });
-  emit({ type: 'result', subtype: 'success', is_error: false, result, session_id: sessionId, num_turns: 1, total_cost_usd: 0.01, duration_ms: 20 });
+  const settings = JSON.parse(args[args.indexOf('--settings') + 1]);
+  for (const h of settings.hooks[event] ?? []) for (const c of h.hooks) execSync(c.command, { input: JSON.stringify({ hook_event_name: event, session_id: sessionId, ...fields }) });
 }
 
-let input = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (c) => (input += c));
-process.stdin.on('end', () => {
-  const sessionId = codex && args.includes('resume') ? args[args.indexOf('resume') + 1] : args.includes('--resume') ? args[args.indexOf('--resume') + 1] : `fake-${process.pid}`;
+function finish(result: string, _sessionId: string): void {
+  process.stdout.write(result + '\n');
+  hook('Stop', codex ? { 'last-assistant-message': result } : { last_assistant_message: result });
+}
+
+function main(): void {
+  hook('SessionStart', {});
   const role = /splitter agent/.test(input) ? 'splitter' : /impact agent/.test(input)
     ? 'impact'
     : /triage agent/.test(input)
@@ -38,8 +42,6 @@ process.stdin.on('end', () => {
             ? 'implementer'
             : 'reviewer';
   if (log) fs.appendFileSync(log, JSON.stringify({ role, args, input }) + '\n');
-  if (codex) emit({ type: 'thread.started', thread_id: sessionId });
-  else emit({ type: 'system', subtype: 'init', session_id: sessionId, model: 'fake', permissionMode: 'default' });
 
   if (role === 'impact') {
     // The change starts at the refund rules, as change.md says; the tree is in the input.
@@ -100,8 +102,6 @@ process.stdin.on('end', () => {
     const results = docs.map((doc) => {
       const rules = doc.endsWith('refunds/rules.md') && fs.readFileSync(doc, 'utf8').includes('14 days');
       if (!rules && !/(logic|compliance|states)\.md$/.test(doc)) return `${doc}\nno change\nThe document doesn't mention the refund window.`;
-      if (codex) emit({ type: 'item.completed', item: { type: 'file_change', changes: [{ path: doc, kind: 'update' }] } });
-      else emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.resolve(doc) } }] }, session_id: sessionId });
       if (rules) fs.writeFileSync(doc, fs.readFileSync(doc, 'utf8').replace('14 days', '30 days'));
       else fs.appendFileSync(doc, '\nRefunds can be requested within 30 days.\n');
       return `${doc}\nupdated\nThe refund window is 30 days.\nuser-visible: yes`;
@@ -120,4 +120,6 @@ process.stdin.on('end', () => {
     return;
   }
   finish('No findings.', sessionId);
-});
+}
+
+main();
