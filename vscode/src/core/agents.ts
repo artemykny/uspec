@@ -98,7 +98,7 @@ export function fromExperiment(changeMd: string): boolean {
 export interface Permissions {
   /** Built-in tools the run has at all. */
   tools: string[];
-  /** Permission rules it gets without asking; everything else that would ask is denied. */
+  /** Permission rules it gets without asking; the auto-mode classifier approves or blocks anything else. */
   allowed: string[];
 }
 
@@ -138,13 +138,13 @@ export function permissions(
 }
 
 /**
- * What a run is told about where it runs, so it doesn't spend turns on commands that will be denied:
+ * What a run is told about where it runs, so it doesn't spend turns on commands that may be blocked:
  * compound shell commands and `git -C` don't match the allowed rules.
  */
 export function runNote(p: Permissions): string {
   const edits = p.allowed.filter((a) => a.startsWith('Edit(')).map((a) => a.slice(5, -1));
   return [
-    'You run in a terminal started by the uspec VS Code extension in the project root. Permission prompts are not shown: anything outside your allowed tools is denied.',
+    'You run in a terminal started by the uspec VS Code extension in the project root. Permission prompts are not shown: anything outside your allowed tools is approved or blocked automatically.',
     'Work without asking questions: the final message of your first turn is read as your result.',
     'Read files with the Read tool, one call per file. Run git as `git diff <commit> -- <path>` from the current directory: no `git -C`, no pipes, loops or chained commands.',
     edits.length ? `You may edit only: ${edits.join(', ')}.` : 'You may not edit any file.',
@@ -153,7 +153,7 @@ export function runNote(p: Permissions): string {
 
 /** Arguments for interactive `claude`; the prompt comes after them. */
 export function claudeArgs(p: Permissions, opts: { model?: string; name?: string } = {}): string[] {
-  const args = ['--strict-mcp-config', '--permission-mode', 'dontAsk'];
+  const args = ['--strict-mcp-config', '--permission-mode', 'auto'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.name) args.push('--name', opts.name);
   args.push('--append-system-prompt', runNote(p));

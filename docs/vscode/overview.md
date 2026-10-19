@@ -89,7 +89,7 @@ The provider is selected in `uspec.agents.provider` (Claude Code by default). Co
 
 A prompt is read from the selected provider’s skill directory (`.claude/skills/` for Claude, `.agents/skills/` for Codex), then the corresponding directory in the user’s home, then the copy of [skills/](../../skills/) bundled with the extension.
 
-**Claude permissions.** A run runs in `dontAsk` permission mode, so it can't ask for permission: anything it isn't allowed is denied. MCP servers are not loaded. Its system prompt says so, and names what it may edit, so it doesn't spend turns on commands that would be denied (a loop or a `git -C` doesn't match the rules).
+**Claude permissions.** A run runs in `auto` permission mode (approve for me): its allowed rules run without asking, and Claude Code's classifier approves or blocks anything else instead of asking the user. It has only the tools in the table. MCP servers are not loaded. Its system prompt says so, and names what it may edit, so it stays within its scope and doesn't spend turns on commands that may be blocked (a loop or a `git -C` doesn't match the rules).
 
 | Role | Tools | Allowed |
 |---|---|---|
