@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { revealAgentTerminal } from './agentTerminal';
 import { onPath } from './core/cli';
 import type { Project } from './projects';
 
@@ -38,18 +39,19 @@ export function claudeOrComplain(): string | undefined {
   return c;
 }
 
-function quote(s: string): string {
-  if (process.platform === 'win32') return `"${s.replace(/"/g, '""')}"`;
+export function quote(s: string): string {
+  if (process.platform === 'win32') return `'${s.replace(/'/g, "''")}'`;
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
 /** Opens a terminal in the project root running `claude <args>`. */
-export function openClaude(p: Project, args: string[], name = 'Claude Code · uspec'): void {
+export function openClaude(p: Project, args: string[], name = 'Claude Code · uspec'): vscode.Terminal | undefined {
   const claude = claudeOrComplain();
   if (!claude) return;
-  const term = vscode.window.createTerminal({ name, cwd: p.root, iconPath: new vscode.ThemeIcon('sparkle') });
-  term.show();
-  term.sendText([claude, ...args].map(quote).join(' '));
+  const term = vscode.window.createTerminal({ name, cwd: p.root, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh', iconPath: new vscode.ThemeIcon('sparkle') });
+  void revealAgentTerminal(term);
+  term.sendText((process.platform === 'win32' ? '& ' : '') + [claude, ...args].map(quote).join(' '));
+  return term;
 }
 
 /** Where a skill is installed for a project, if anywhere. */

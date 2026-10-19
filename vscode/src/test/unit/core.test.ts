@@ -478,7 +478,11 @@ describe('agents', () => {
   });
 
   it('knows experiments', () => {
-    assert.ok(fromExperiment('# Refunds\n\nComes from an experiment on branch x.'));
+    assert.ok(fromExperiment('---\nmode: check\n---\n# Refunds'));
+    assert.ok(fromExperiment('---\r\nmode: "check" # existing code\r\n---\r\n# Refunds'));
+    for (const text of ['This is not an experiment.', 'Experiments are out of scope.', 'Comes from an experiment on branch x.', 'mode: check', '---\nmode: implement\n---\nExperiment']) {
+      assert.ok(!fromExperiment(text), text);
+    }
     assert.ok(!fromExperiment('# Refunds\n\nThe window grows.'));
   });
 

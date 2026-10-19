@@ -141,6 +141,15 @@ fn create_root(root: &Path, spec_dir: &Path, out: &Out) -> Result<()> {
         [] => bail!("the preset has no root type: every type is some other type's child"),
         many => bail!("the preset has several possible root types: {}", many.join(", ")),
     };
+    // Check every destination before creating any part of the root node.
+    for name in std::iter::once("node.yaml".to_string())
+        .chain(root_type.templates.keys().map(|doc| format!("{doc}.md")))
+    {
+        let dest = spec_dir.join(&name);
+        if dest.symlink_metadata().is_ok() {
+            bail!("{} already exists; refusing to overwrite it", dest.display());
+        }
+    }
     fs::create_dir_all(spec_dir)?;
     fs::write(spec_dir.join("node.yaml"), format!("type: {}\n", root_type.id))?;
     let mut created = vec!["docs/node.yaml".to_string()];

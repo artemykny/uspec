@@ -1,10 +1,14 @@
 // The Spec Tree view: nodes with their types, documents and children (docs/vscode/overview.md#views).
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import type { ChangesViewProvider, ChangeEl } from './changesView';
+import type { TypesViewProvider, TypeEl } from './typesView';
 import { baseName, docKey, join, showNode } from '../core/paths';
 import { STATE_LABEL, type Project, type ProjectManager } from '../projects';
 
 export type SpecEl =
+  | { kind: 'root'; branch: 'changes' | 'types' | 'specification' }
+  | { kind: 'foreign'; branch: 'changes' | 'types'; value: ChangeEl | TypeEl; parent: SpecEl }
   | { kind: 'project'; p: Project }
   | { kind: 'node'; p: Project; node: string }
   | { kind: 'doc'; p: Project; node: string; doc: string; missing?: boolean }
@@ -15,13 +19,16 @@ export class SpecTreeProvider implements vscode.TreeDataProvider<SpecEl>, vscode
   private readonly emitter = new vscode.EventEmitter<SpecEl | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly sub: vscode.Disposable;
+  private readonly agentSub?: vscode.Disposable;
 
-  constructor(private readonly manager: ProjectManager) {
+  constructor(private readonly manager: ProjectManager, private readonly changes?: ChangesViewProvider, private readonly types?: TypesViewProvider) {
     this.sub = manager.onDidChange(() => this.emitter.fire(undefined));
+    this.agentSub = changes?.onDidChangeTreeData(() => this.emitter.fire(undefined));
   }
 
   dispose(): void {
     this.sub.dispose();
+    this.agentSub?.dispose();
     this.emitter.dispose();
   }
 
@@ -29,11 +36,17 @@ export class SpecTreeProvider implements vscode.TreeDataProvider<SpecEl>, vscode
     if (!el) {
       // Empty, so the welcome view explains how to get the CLI.
       if (this.manager.cliMissing) return [];
+      if (this.changes && this.types) return ['changes', 'types', 'specification'].map(branch => ({ kind: 'root', branch } as SpecEl));
       const ps = this.manager.projects;
       if (ps.length === 1) return this.projectChildren(ps[0]);
       return ps.map((p) => ({ kind: 'project', p }));
     }
     switch (el.kind) {
+      case 'root':
+        if (el.branch === 'specification') return this.manager.projects.length === 1 ? this.projectChildren(this.manager.projects[0]) : this.manager.projects.map(p => ({ kind: 'project', p }));
+        return (el.branch === 'changes' ? this.changes!.getChildren() : this.types!.getChildren()).map(value => ({ kind: 'foreign', branch: el.branch as 'changes' | 'types', value, parent: el }));
+      case 'foreign':
+        return (el.branch === 'changes' ? this.changes!.getChildren(el.value as ChangeEl) : this.types!.getChildren(el.value as TypeEl)).map(value => ({ kind: 'foreign', branch: el.branch, value, parent: el }));
       case 'project':
         return this.projectChildren(el.p);
       case 'node': {
@@ -82,14 +95,16 @@ export class SpecTreeProvider implements vscode.TreeDataProvider<SpecEl>, vscode
   getParent(el: SpecEl): SpecEl | undefined {
     const multi = this.manager.projects.length > 1;
     switch (el.kind) {
+      case 'root': return undefined;
+      case 'foreign': return el.parent;
       case 'project':
-        return undefined;
+        return this.changes ? { kind: 'root', branch: 'specification' } : undefined;
       case 'message':
-        return multi ? { kind: 'project', p: el.p } : undefined;
+        return multi ? { kind: 'project', p: el.p } : this.changes ? { kind: 'root', branch: 'specification' } : undefined;
       case 'node': {
         const parent = el.p.nodes.get(el.node)?.parent;
         if (parent !== undefined) return { kind: 'node', p: el.p, node: parent };
-        return multi ? { kind: 'project', p: el.p } : undefined;
+        return multi ? { kind: 'project', p: el.p } : this.changes ? { kind: 'root', branch: 'specification' } : undefined;
       }
       case 'doc':
         return { kind: 'node', p: el.p, node: el.node };
@@ -105,6 +120,13 @@ export class SpecTreeProvider implements vscode.TreeDataProvider<SpecEl>, vscode
 
   getTreeItem(el: SpecEl): vscode.TreeItem {
     switch (el.kind) {
+      case 'root': {
+        const item = new vscode.TreeItem({changes: 'Changes', types: 'Node types', specification: 'Specification'}[el.branch], el.branch === 'specification' ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+        item.id = `root:${el.branch}`; item.contextValue = `uspec.root.${el.branch}`;
+        item.iconPath = new vscode.ThemeIcon({changes: 'git-pull-request', types: 'symbol-class', specification: 'root-folder'}[el.branch]);
+        return item;
+      }
+      case 'foreign': return el.branch === 'changes' ? this.changes!.getTreeItem(el.value as ChangeEl) : this.types!.getTreeItem(el.value as TypeEl);
       case 'project': {
         const item = new vscode.TreeItem(el.p.name, vscode.TreeItemCollapsibleState.Expanded);
         item.id = `${el.p.root}|project`;

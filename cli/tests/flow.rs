@@ -440,3 +440,29 @@ fn templates_derive_from_sections() {
     let (ok, text) = p.run(&["validate"]);
     assert!(!ok && text.contains("docs/system/services/payments/logic.md: derives from api.md#nope, which has no such section"), "{text}");
 }
+
+#[test]
+fn init_preserves_existing_documents() {
+    let p = Project { dir: std::env::temp_dir().join(format!("uspec-test-init-collision-{}", std::process::id())) };
+    fs::create_dir_all(p.dir.join("docs")).unwrap();
+    fs::write(p.dir.join("docs/overview.md"), "existing documentation\n").unwrap();
+    let (ok, text) = p.run(&["init"]);
+    assert!(!ok, "{text}");
+    assert!(text.contains("refusing to overwrite"));
+    assert_eq!(fs::read_to_string(p.dir.join("docs/overview.md")).unwrap(), "existing documentation\n");
+    assert!(!p.dir.join("docs/node.yaml").exists());
+    assert!(!p.dir.join(".uspec").exists());
+}
+
+#[test]
+fn change_round_trips_yaml_sensitive_paths() {
+    let p = Project::example("quoted-paths");
+    p.ok(&["node", "new", "system/services/draft: v2", "--type", "service", "--code", "services/draft"]);
+    p.ok(&["change", "new", "quoted-paths"]);
+    let doc = "system/services/draft: v2/logic.md";
+    p.ok(&["change", "set", "quoted-paths", doc, "affected", "--reason", "test"]);
+    assert_eq!(p.json(&["change", "status", "quoted-paths"])["documents"][0]["document"], doc);
+    p.ok(&["change", "set", "quoted-paths", doc, "updated"]);
+    let status = p.json(&["change", "status", "quoted-paths"]);
+    assert_eq!(status["implementation"][0]["node"], "system/services/draft: v2");
+}

@@ -35,20 +35,7 @@
       "uspec": [
         {
           "id": "uspec.specTree",
-          "name": "Spec Tree"
-        },
-        {
-          "id": "uspec.changes",
-          "name": "Changes"
-        },
-        {
-          "id": "uspec.node",
-          "name": "Node"
-        },
-        {
-          "id": "uspec.types",
-          "name": "Node Types",
-          "visibility": "collapsed"
+          "name": "uspec"
         }
       ]
     },
@@ -62,16 +49,6 @@
         "view": "uspec.specTree",
         "contents": "No uspec project in this workspace.\n[Initialize Project](command:uspec.init)",
         "when": "!uspec.cliMissing && uspec.loaded && !uspec.hasProject"
-      },
-      {
-        "view": "uspec.changes",
-        "contents": "No open changes.\n[Start Change in Claude Code](command:uspec.claude.startChange)\n[New Change](command:uspec.change.new)",
-        "when": "uspec.hasProject && !uspec.hasChanges"
-      },
-      {
-        "view": "uspec.node",
-        "contents": "Open a spec document, a node.yaml or a file under a node's code paths to see its node.",
-        "when": "uspec.hasProject"
       }
     ],
     "commands": [
@@ -408,28 +385,18 @@
         },
         {
           "command": "uspec.change.new",
-          "when": "view == uspec.changes",
+          "when": "view == uspec.specTree",
           "group": "navigation@1"
         },
         {
           "command": "uspec.claude.startChange",
-          "when": "view == uspec.changes",
+          "when": "view == uspec.specTree",
           "group": "navigation@2"
         },
         {
-          "command": "uspec.refresh",
-          "when": "view == uspec.changes",
-          "group": "navigation@3"
-        },
-        {
           "command": "uspec.agents.clearRuns",
-          "when": "view == uspec.changes",
+          "when": "view == uspec.specTree",
           "group": "1_runs@1"
-        },
-        {
-          "command": "uspec.refresh",
-          "when": "view == uspec.types",
-          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -525,187 +492,187 @@
         },
         {
           "command": "uspec.agents.runChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;looping/)",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;looping/)",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.stopChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;.*;running/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;.*;running/",
           "group": "inline@2"
         },
         {
           "command": "uspec.change.reviewDiffs",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "inline@3"
         },
         {
           "command": "uspec.change.showState",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "inline@4"
         },
         {
           "command": "uspec.agents.runChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "1_agents@1"
         },
         {
           "command": "uspec.change.showState",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "3_change@0"
         },
         {
           "command": "uspec.agents.stopChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;.*;running/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;.*;running/",
           "group": "1_agents@2"
         },
         {
           "command": "uspec.claude.continueChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "2_claude@1"
         },
         {
           "command": "uspec.change.setActive",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;active/)",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;active/)",
           "group": "3_change@1"
         },
         {
           "command": "uspec.change.reviewDiffs",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "3_change@2"
         },
         {
           "command": "uspec.change.openChangeMd",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "3_change@3"
         },
         {
           "command": "uspec.change.openStatus",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "3_change@4"
         },
         {
           "command": "uspec.change.close",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
           "group": "4_close@1"
         },
         {
           "command": "uspec.change.close",
-          "when": "view == uspec.changes && viewItem == uspec.closable",
+          "when": "view == uspec.specTree && viewItem == uspec.closable",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.runTriage",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.triage;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.triage;idle/",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.runTriage",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.triage;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.triage;idle/",
           "group": "1_agents@1"
         },
         {
           "command": "uspec.agents.runWriter",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;affected;ready;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc;affected;ready;idle/",
           "group": "inline@1"
         },
         {
           "command": "uspec.change.diff",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc/",
           "group": "inline@2"
         },
         {
           "command": "uspec.agents.runWriter",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;affected;ready;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc;affected;ready;idle/",
           "group": "1_agents@1"
         },
         {
           "command": "uspec.change.diff",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc/",
           "group": "2_change@1"
         },
         {
           "command": "uspec.change.recordUpdated",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;(pending|affected|no-change)/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc;(pending|affected|no-change)/",
           "group": "2_change@2"
         },
         {
           "command": "uspec.change.markAffected",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;(pending|affected)/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc;(pending|affected)/",
           "group": "2_change@3"
         },
         {
           "command": "uspec.change.markNoChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;(pending|affected)/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc;(pending|affected)/",
           "group": "2_change@4"
         },
         {
           "command": "uspec.context.show",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc/",
           "group": "3_context@1"
         },
         {
           "command": "uspec.context.copy",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeDoc/",
           "group": "3_context@2"
         },
         {
           "command": "uspec.change.markDone",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode;pending/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeNode;pending/",
           "group": "2_change@1"
         },
         {
           "command": "uspec.context.show",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeNode/",
           "group": "3_context@1"
         },
         {
           "command": "uspec.context.copy",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.changeNode/",
           "group": "3_context@2"
         },
         {
           "command": "uspec.agents.runImpact",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.impact;idle/",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.runImpact",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.impact;idle/",
           "group": "1_agents@1"
         },
         {
           "command": "uspec.change.openChangeMd",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.impact/",
           "group": "2_change@1"
         },
         {
           "command": "uspec.claude.continueChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.impact/",
           "group": "2_change@2"
         },
         {
           "command": "uspec.agents.runPlanner",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.nextPlan;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.nextPlan;idle/",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.runPlanner",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.nextPlan;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.nextPlan;idle/",
           "group": "1_agents@1"
         },
         {
           "command": "uspec.agents.runImplementer",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.plan;pending;ready;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.plan;pending;ready;idle/",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.runImplementer",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.plan;pending;.*;idle/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.plan;pending;.*;idle/",
           "group": "1_agents@1"
         },
         {
           "command": "uspec.change.openPlan",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.plan/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.plan/",
           "group": "2_change@1"
         },
         {
@@ -715,107 +682,107 @@
         },
         {
           "command": "uspec.agents.approve",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;needs-approval/",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.reject",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;needs-approval/",
           "group": "inline@2"
         },
         {
           "command": "uspec.agents.showRunDiff",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;.*;writer/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;.*;writer/",
           "group": "inline@3"
         },
         {
           "command": "uspec.agents.stopRun",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;running/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;running/",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.showLog",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run/",
           "group": "inline@4"
         },
         {
           "command": "uspec.agents.showLog",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run/",
           "group": "1_run@1"
         },
         {
           "command": "uspec.agents.showRunDiff",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;.*;writer/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;.*;writer/",
           "group": "1_run@2"
         },
         {
           "command": "uspec.agents.openSession",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;.*;session/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;.*;session/",
           "group": "1_run@3"
         },
         {
           "command": "uspec.agents.approve",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;needs-approval/",
           "group": "2_approve@1"
         },
         {
           "command": "uspec.agents.reject",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;needs-approval/",
           "group": "2_approve@2"
         },
         {
           "command": "uspec.agents.stopRun",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;running/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.run;running/",
           "group": "3_stop@1"
         },
         {
           "command": "uspec.agents.approve",
-          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "when": "view == uspec.specTree && viewItem == uspec.runDoc;needs-approval",
           "group": "inline@1"
         },
         {
           "command": "uspec.agents.reject",
-          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "when": "view == uspec.specTree && viewItem == uspec.runDoc;needs-approval",
           "group": "inline@2"
         },
         {
           "command": "uspec.agents.showRunDiff",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.runDoc/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.runDoc/",
           "group": "inline@3"
         },
         {
           "command": "uspec.agents.showRunDiff",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.runDoc/",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.runDoc/",
           "group": "1_run@2"
         },
         {
           "command": "uspec.agents.approve",
-          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "when": "view == uspec.specTree && viewItem == uspec.runDoc;needs-approval",
           "group": "2_approve@1"
         },
         {
           "command": "uspec.agents.reject",
-          "when": "view == uspec.changes && viewItem == uspec.runDoc;needs-approval",
+          "when": "view == uspec.specTree && viewItem == uspec.runDoc;needs-approval",
           "group": "2_approve@2"
         },
         {
           "command": "uspec.context.copy",
-          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "when": "view == uspec.specTree && viewItem == uspec.contextGroup",
           "group": "inline@1"
         },
         {
           "command": "uspec.context.show",
-          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "when": "view == uspec.specTree && viewItem == uspec.contextGroup",
           "group": "1_context@1"
         },
         {
           "command": "uspec.context.copy",
-          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "when": "view == uspec.specTree && viewItem == uspec.contextGroup",
           "group": "1_context@2"
         },
         {
           "command": "uspec.context.copyWithContents",
-          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "when": "view == uspec.specTree && viewItem == uspec.contextGroup",
           "group": "1_context@3"
         }
       ]

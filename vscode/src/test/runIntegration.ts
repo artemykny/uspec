@@ -83,7 +83,7 @@ async function main(): Promise<void> {
     const copy = path.join(tmp, 'uspec');
     const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repo }).toString().split('\0').filter(Boolean);
     for (const f of files) {
-      if (!fs.existsSync(path.join(repo, f))) continue;
+      if (!fs.existsSync(path.join(repo, f)) || !fs.statSync(path.join(repo, f)).isFile()) continue;
       fs.mkdirSync(path.dirname(path.join(copy, f)), { recursive: true });
       fs.copyFileSync(path.join(repo, f), path.join(copy, f));
     }

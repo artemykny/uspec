@@ -80,7 +80,6 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
         if (!c) return [];
         if (c.error) return [{ kind: 'message', p, name: el.name, text: c.error }];
         const out: ChangeEl[] = [];
-        if (this.agents.runsOf(p, el.name).length) out.push({ kind: 'group', p, name: el.name, group: 'agents' });
         out.push({ kind: 'group', p, name: el.name, group: 'next' });
         if (c.docs.size) out.push({ kind: 'group', p, name: el.name, group: 'documents' });
         if (c.plans.length) out.push({ kind: 'group', p, name: el.name, group: 'plans' });
@@ -282,7 +281,8 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
     const active = p.activeChange?.name === name;
     const looping = this.agents.isLooping(p, name);
     const running = this.agents.isRunning(p, name);
-    const item = new vscode.TreeItem(name, active ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+    const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.Collapsed);
+    item.command = { command: 'uspec.change.showState', title: 'Show state', arguments: [{ p, name }] };
     item.id = `${p.root}|change|${name}`;
     const left = summary(c);
     item.description = [active ? 'active' : '', left].filter(Boolean).join(' · ');

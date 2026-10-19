@@ -14,7 +14,7 @@ The extension shows a uspec project in VS Code: the [spec tree](../method/spec-t
 
 ## Views
 
-The extension adds a uspec container to the activity bar with four views.
+The extension adds a uspec container to the activity bar with one explorer and exactly three root branches, in order: **Changes**, **Node types**, **Specification**. Changes is collapsed by default. Project groups appear inside these branches in multi-project workspaces.
 
 **Spec Tree.** Nodes, not folders: each node with its name, its type and a mark when it has code paths; under it its documents in its type's order, a missing required document marked, the `-extra/` folder of a document under the document, then its child nodes. The tooltip gives the type's description, the links as written (with the document and section they narrow to) and the code paths. A node with validation errors is marked. The view follows the active editor. Node actions:
 
@@ -25,11 +25,10 @@ The extension adds a uspec container to the activity bar with four views.
 
 **Go to Node** is a quick pick over every node and document of every project.
 
-**Node.** Follows the active file: a spec document, a node's `node.yaml`, or a code file under a node's code paths (the node with the longest matching code path). It shows the node's type and, for a document, its template: description, required or optional, exposed or internal, what it derives from. Then the node's upstream (its links, each with the document or section it narrows to, opening at that section), its downstream (the nodes that link to it, worked out from `uspec tree`), its code paths, its state in the active change, its drift, and its context: what `uspec context` lists for writing the current document and, for a node with code paths, for implementing it, with the active change. Context files open on click, a section at its heading; a file marked `diff since <commit>` opens as a diff. **Copy context** copies the CLI's text output, or that output followed by every listed file's content and every diff, to paste into any agent.
+**Node overview.** Opens in the main editor when a node is selected, alongside its tree. Follows the active file: a spec document, a node's `node.yaml`, or a code file under a node's code paths (the node with the longest matching code path). It shows the node's type and, for a document, its template: description, required or optional, exposed or internal, what it derives from. Then the node's upstream (its links, each with the document or section it narrows to, opening at that section), its downstream (the nodes that link to it, worked out from `uspec tree`), its code paths, its state in the active change, its drift, and its context: what `uspec context` lists for writing the current document and, for a node with code paths, for implementing it, with the active change. Context files open on click, a section at its heading; a file marked `diff since <commit>` opens as a diff. **Copy context** copies the CLI's text output, or that output followed by every listed file's content and every diff, to paste into any agent.
 
 **Changes.** Open changes, oldest first, with their counts. The oldest is the active change, since changes are processed one at a time; another can be made active. Under each change:
 
-- **Agents**: the agent runs of this session for the change, with their state, duration and cost.
 - **Next**: what `uspec change next` lists, in the order of the change's steps: **Find starting documents** while the impact step is due; the triage batch with the rules that reached each candidate; the documents to write grouped by node; **Plan** with the nodes to plan; the plans ready to implement, each with its nodes; and the plan errors. When nothing is listed and nothing is left, the change can be closed.
 - **Documents**, grouped by state, each with its reason or the rules that reached it.
 - **Plans**: each plan with its state, its nodes and what it comes after; a plan opens its file.
@@ -38,16 +37,17 @@ The extension adds a uspec container to the activity bar with four views.
 
 Change actions: **New change** (asks for a kebab-case name, runs `uspec change new` and opens `change.md` to fill in from the template; or **Start change in Claude Code** to write it with `uspec-spec`), **Show state** (opens the change state window below), **Close** (runs `uspec change close` and shows what blocks it), **Review diffs** (every updated document's diff since the baseline in one view), and the agent actions below. Document actions: **Diff since baseline**, **Record as updated** (shows what it propagated to), **Mark affected** and **Mark no-change** (ask for the reason), **Add to change** on a document not in it (marks it `affected` as a starting document, asking for the reason), **Run writer** (runs the writer of the document's node, with that document and the node's other documents under `write`). Node actions: **Mark done**. Plan actions: **Run implementer**, **Open plan**. Every state change runs `uspec change set`.
 
-**Change state.** A window in the main editor area, not a view in the sidebar, that shows where a change is in its workflow, so the user sees what is happening, what it waits for and what comes next. **Show state** on a change, or a click on the status bar item for the active change, opens it. It lists the change's states in order, each marked done, current or to come, and for the current one what it waits for (the user or running agents) with its actions. The state is read from `change next` and `change status` and from the change's agent runs:
+**Change state.** A compact editor view follows the [review workflow](#review-workflow). It uses VS Code theme tokens, native tree items and ordinary VS Code button styles, including light and high contrast themes. No separate terminal inventory or explanatory cards. Use a single scrolling step bar, compact file rows with filenames and muted paths, and native section-header colors. Primary actions advance or approve work; document and terminal actions are secondary. Do not repeat agent status in a plan row. Keep plan metadata and actions aligned in two compact rows, use short status labels with detailed hover text, show added/removed line counts on file reviews, and reveal optional comment inputs on demand. On narrow editors, keep the current step visible within the scrolling bar. Split proposals render as readable plan rows, with the Markdown source available through Open.
 
-1. **Waiting for the user**: the change has just been opened: `change next` lists `impact` and no impact run has started. The user writes and approves `change.md`; the window says whether it is still the template, with **Open change.md**, **Continue in Claude Code** and **Run agents**.
-2. **Selecting starting documents**: the impact run is running, or the starting documents it found wait for the user, with **Approve** and **Reject** as in the Changes view.
-3. **Triage and write**: documents of the change are `pending` or `affected`. Triage runs and writers repeat until every document is settled; the window shows the documents per state, the runs going on, the updates waiting for approval and the blocked writers.
-4. **Implementation**: every document is settled.
-   - **Making plans**: `change next` lists `plan`, or the plans wait for approval; the planner run and the plan errors.
-   - **Running plans**: the plans with their state, their nodes, what they come after and their implementer runs.
+1. **Describe**: **Open change.md**, **Process change.md**. No agent button here. Processing immediately enters Change plan.
+2. **Change plan**: the impact agent produces `change-plan.md`, a Markdown review document. The file list is read from that document. **Approve**, **Go back**, **Continue with agent**; continuation resumes the same session.
+3. **Triage & write**: review triage recommendations, select files to rewrite and optionally comment per file. No-change files are hidden. Writers run once per ready node; updated files are grouped by node with one agent status/control per node. Each file has an inline diff, **collapsed by default**, and **Open diff in VS Code**, which opens the native diff editor. No aggregate write review document.
+4. **Split plans**: review `plan-split.md`, assigning nodes and dependencies to separate paths such as `plans/cli.md` and `plans/vscode.md`. Approve before generation.
+5. **Implementation plans**: generate each approved plan with its own agent. Independent generation can run in parallel, regardless of implementation dependencies. Review/approve each plan separately; there is no global implementation plan.
+6. **Implement**: per-plan progress, dependencies and **Open agent window**. All current plans must be approved before any implementation starts.
+7. **Complete**: close once the CLI says all work is settled.
 
-When nothing is listed and nothing is left, it says the change can be closed, with **Close**. A gap or an update that sends the change back to the spec makes **Triage and write** current again. Like the views, it updates live.
+Completed steps can be revisited without undoing recorded changes. Agent status appears beside the node or plan it belongs to, including running agents when a later step is viewed. A gap returns to spec work. Every mutation of method state still goes through the CLI.
 
 **Node Types.** Each type with its description, documents (required or optional, internal, extra, derives from), allowed children and allowed links, from `uspec types`. Types and documents open their `node-type.yaml` and templates.
 
@@ -67,7 +67,7 @@ When nothing is listed and nothing is left, it says the change can be closed, wi
 
 ## Agents
 
-Agents are Claude Code runs started by the extension: `claude -p` with `--output-format stream-json`, in the project root, with the prompt on stdin. Each run does one job of the active change, as in [agents](../method/agents/rules.md); the extension is the orchestrator that starts them and records their results, and the user approves through the views.
+Agents are Claude Code runs started in native VS Code terminals, hidden until requested. Automated runs use `claude -p --output-format stream-json` with the prompt on stdin and a result sidecar; terminal output remains visible through the regular terminal. Opening a run reveals only its terminal in the editor. After completion, Continue resumes its exact Claude session in that terminal. Input is never replaced by a webview chat. Each run does one job of the active change, as in [agents](../method/agents/rules.md); the extension is the orchestrator that starts them and records their results, and the user approves through the views.
 
 **Roles.**
 
@@ -76,8 +76,9 @@ Agents are Claude Code runs started by the extension: `claude -p` with `--output
 | Impact | the change, while `change next` lists `impact` | `uspec-spec/impact-agent.md` | `Change: <path of change.md>`, then the text output of `uspec tree` |
 | Triage | the triage batch of `change next` | `uspec-spec/triage-agent.md` | the batch as `change next` prints it: `read` and `batch` |
 | Writer | node under `write` | `uspec-spec/writer-agent.md` | `uspec context <node> --document <id>... --change <name>`, one `--document` per document listed for the node |
-| Planner | the change, while `change next` lists `plan` | `uspec-spec/planner-agent.md` | `Change:` and `Plans:` (the path of `change.md` and of the plans directory), `Nodes to plan:` one per line, `Existing plans:` one path per line or `none`, then for each node to plan `## <node>` and `uspec context <node> --implement --change <name>` |
-| Implementer | plan under `implement` | `uspec-spec/implementer-agent.md` | `Mode: implement`, or `Mode: check` when `change.md` says the change comes from an experiment, then `Plan: <path of the plan>`, then for each of its nodes `## <node>` and `uspec context <node> --implement --change <name>` |
+| Splitter | settled change with unplanned nodes | `uspec-spec/splitter-agent.md` | change, nodes, existing plans and implementation contexts; returns the Markdown split proposal |
+| Planner | one approved split entry | `uspec-spec/planner-agent.md` | `Change:` and `Plans:` (the path of `change.md` and of the plans directory), `Nodes to plan:` one per line, `Existing plans:` one path per line or `none`, then for each node to plan `## <node>` and `uspec context <node> --implement --change <name>` |
+| Implementer | plan under `implement` | `uspec-spec/implementer-agent.md` | `Mode: implement`, or `Mode: check` when `change.md` has `mode: check` in its YAML frontmatter, then `Plan: <path of the plan>`, then for each of its nodes `## <node>` and `uspec context <node> --implement --change <name>` |
 | Reviewer | node | `uspec-review/reviewer-agent.md` | the node's `uspec context` output, as `uspec-review` gives it |
 
 A prompt is read from the project's `.claude/skills/`, then `~/.claude/skills/`, then the copy of [skills/](../../skills/) bundled with the extension.
@@ -88,13 +89,15 @@ A prompt is read from the project's `.claude/skills/`, then `~/.claude/skills/`,
 |---|---|---|
 | Impact, triage, reviewer | Read, Glob, Grep, Bash | reading, `git diff`, `git show`, `git log` |
 | Writer | and Edit, Write | and editing its documents and their `-extra/` folders |
-| Planner | and Edit, Write | and writing in the change's `plans/` directory |
+| Splitter | Read, Glob, Grep, Bash | reading and git diffs; the extension saves its Markdown proposal |
+| Planner | and Edit, Write | and writing only its assigned plan file |
 | Implementer | Read, Glob, Grep, Bash, Edit, Write | reading, git, editing under the code paths of its plan's nodes, and the tools in `uspec.agents.implementerAllowedTools` (Bash by default, to run tests) |
 
 **Results.** The run's final message is read as the prompt's output format; code fences and emphasis are ignored.
 
-- Impact: each line `<document> | <reason>` naming a document of the tree that isn't in the change is a starting document. The run always waits for the user: **Approve** shows the documents in a list, all picked, and records the ones kept as `affected` with their reasons; **Reject** records nothing. Notes, such as a node that seems missing, are shown.
-- Triage: each line `<document> | affected | <reason>` or `<document> | no-change | <reason>` for a document of the batch is recorded with `change set`. Candidates without a decision stay pending and go to the next triage run; the notes are shown.
+- Impact: saves `change-plan.md` in the documented Markdown format. Every named document is validated against the tree; the UI reads its file list from that document. Approval records selected entries as affected.
+- Triage: saves a Markdown proposal with one decision per candidate. Approval records the reviewed decisions through `change set`. Missing, duplicate or unknown candidates prevent approval. No-change entries are hidden in the UI, retained in the proposal.
+- Splitter: saves `plan-split.md`, validates node coverage and dependencies, then waits for approval before any planner starts.
 - Writer: one result per document, in the order given, each handled on its own. `updated` is recorded as `updated` once approved (see below), and anything the writer adds after its results is kept as notes; `no change` is recorded as `no-change` with its reason; `blocked` records nothing and is shown to the user with what needs to change upstream. A result that says `updated` without the document changing, or `no change` after it changed, records nothing, and so does a document left without a result.
 - Planner: `planned` reloads the change: its plans come from `change next`, which reports plan errors. With `uspec.agents.approvePlans`, the run waits for the user to read the plans: **Approve** lets implementation start. `failed` records nothing and is shown.
 - Implementer: `done` records each of the plan's nodes as `done`; `gap` and `failed` record nothing and are shown.
@@ -104,9 +107,9 @@ Anything else is a failed run, which records nothing.
 
 **Approval.** The starting documents and, with `uspec.agents.approvePlans`, the plans wait for the user as above. Before a writer runs, its documents are saved. An `updated` result that is user-visible (or every one, or none, per `uspec.agents.approveWrites`) waits for the user: **Show diff** compares the document with what it was, **Approve** records `updated`, **Reject** puts the saved content back and leaves the document `affected`. Once nothing of the change waits for the user, approving offers to run its agents again.
 
-**Running a change.** **Run agents** on a change repeats rounds until nothing is ready or something needs the user: each round runs `change next` and starts what it lists, in the order of the change's steps: the impact run; else the triage run and a writer per node with documents to write; else the planner; else an implementer per ready plan; at most `uspec.agents.maxParallel` at once, and waits for them. It stops when a run waits for approval, is blocked, finds a gap or fails, when a triage run records nothing, or when `change next` reports plan errors. Before the impact run, it asks first when `change.md` is still the template. Running agents on a change that isn't the oldest open one asks first, since changes are processed oldest first. Single items run from their own actions, and an item `change next` doesn't list as ready asks first; an item already running isn't started twice. **Stop** ends the change's runs.
+**Running a change.** **Run agents** on a change repeats rounds until nothing is ready or something needs the user: each round runs `change next` and starts what it lists, in the order of the change's steps: the impact run; else the triage run and a writer per node with documents to write; else a splitter awaiting approval, then one planner per approved split entry; else an implementer per ready plan; at most `uspec.agents.maxParallel` at once, and waits for them. It stops when a run waits for approval, is blocked, finds a gap or fails, when a triage run records nothing, or when `change next` reports plan errors. Before the impact run, it asks first when `change.md` is still the template. Running agents on a change that isn't the oldest open one asks first, since changes are processed oldest first. Single items run from their own actions, and an item `change next` doesn't list as ready asks first; an item already running isn't started twice. **Stop** ends the change's runs.
 
-**Logs.** Every run has a log, live while it runs: the prompt's input, the agent's messages and tool calls, denied permissions, the result, its cost and session id. **Open in Claude Code** resumes the run's session in a terminal.
+**Logs.** Every run has a log, live while it runs: the prompt's input, the agent's messages and tool calls, denied permissions, the result, its cost and session id. **Open agent window** reveals the run’s native terminal; **Continue with agent** resumes that exact session. Session identities and pending reviews survive extension reloads.
 
 **Interactive sessions.** Work that needs a conversation with the user runs in a terminal with Claude Code: **Start change in Claude Code** asks what should change and runs `/uspec-spec` with it, to write `change.md`; **Continue in Claude Code** runs `/uspec-spec` on a change, to revise `change.md` or resolve a blocked writer or a gap, and is offered when a run is blocked or finds a gap. These need the skills installed; **Install Skills** copies the bundled skills, `uspec-spec` and `uspec-review`, into the project's `.claude/skills/`, and removes an installed `uspec-implement`, which no longer exists.
 
@@ -150,3 +153,70 @@ TypeScript in [vscode/](../../vscode/), bundled with esbuild into `dist/extensio
 | `src/agents.ts` | Agent runs of a change: starting, recording, approval, logs |
 | `src/terminal.ts` | Claude Code sessions in a terminal; installing the skills |
 | `src/content.ts` | Read-only documents: a file at the baseline, context output, run logs |
+
+Plan approvals persist across extension reloads and apply only to the reviewed contents and change baseline. A modified or unapproved plan must be reviewed before implementation.
+
+## Review workflow
+
+The editor workflow has seven steps: Describe, Change plan, Triage & write,
+Split plans, Implementation plans, Implement, Complete. The CLI owns method
+state; the extension owns review artifacts and session identities.
+
+### Markdown proposals
+
+`change-plan.md`, triage proposals and `plan-split.md` live in the change
+directory. They are editable Markdown, never a JSON review UI. Each proposal
+starts with a title and explanation, then entries in this format:
+
+```markdown
+# Change plan
+
+Explain the intended changes and their reasons here.
+
+## Files
+
+### docs/service/api.md
+- Decision: affected
+- Reason: The public contract changes.
+- Comment:
+
+## Plans
+
+### plans/cli.md
+- Nodes: cli
+- After:
+- Reason: CLI work can be implemented independently.
+```
+
+Files use document keys from the spec tree; decisions are `affected` or
+`no-change`. Split entries use simple plan ids in `plans/<id>.md`; every
+unplanned node belongs to exactly one entry, dependency ids must exist and
+must not form cycles. Invalid or incomplete proposals cannot be approved.
+The UI rereads the document before approval; it does not approve a stale
+in-memory list. User selections/comments are saved into the proposal and
+provided to the corresponding writer. No-change files remain in the proposal
+for audit but are hidden from the review list.
+
+### Review and navigation
+
+Approve records the reviewed decisions. Go back revisits the prior step;
+it never restores files or silently deletes approved work. Continue with
+agent resumes the session that produced that proposal, node edits or plan.
+Session ids and outstanding review snapshots are retained across reloads.
+Approval of a plan applies only to its exact contents and change baseline.
+
+Writer review groups changed files by node. One agent control/status sits on
+the node header. Each changed file has a collapsed inline diff, an optional
+comment and a native diff-editor action comparing the saved pre-write content
+with the current file. The diff displays deletions/additions using theme
+tokens. Explicit rejection may restore the saved content; going back cannot.
+Files recorded no-change are omitted. There is no `write-review.md`.
+
+### Terminals
+
+Automated Claude Code runs start in ordinary hidden terminals. Open agent
+window reveals the selected terminal in the editor. While running, it shows
+that run; after completion, continuation uses `--resume` with its saved session
+id. No custom terminal input or webview chat is used. Closing a terminal stops
+its running job and must not record success. Terminal controls and queued,
+running, review, error and done states belong to their workflow items.

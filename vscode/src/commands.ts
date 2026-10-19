@@ -53,7 +53,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     ctx.subscriptions.push(
       vscode.commands.registerCommand(id, async (...args: any[]) => {
         try {
-          await fn(...args);
+          await fn(...args.map(arg => arg?.kind === 'foreign' ? arg.value : arg));
         } catch (e) {
           fail(e);
         }

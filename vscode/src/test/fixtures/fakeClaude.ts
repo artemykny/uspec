@@ -19,8 +19,8 @@ let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => (input += c));
 process.stdin.on('end', () => {
-  const sessionId = `fake-${process.pid}`;
-  const role = /impact agent/.test(input)
+  const sessionId = args.includes('--resume') ? args[args.indexOf('--resume') + 1] : `fake-${process.pid}`;
+  const role = /splitter agent/.test(input) ? 'splitter' : /impact agent/.test(input)
     ? 'impact'
     : /triage agent/.test(input)
       ? 'triage'
@@ -38,6 +38,11 @@ process.stdin.on('end', () => {
     // The change starts at the refund rules, as change.md says; the tree is in the input.
     const ok = /^Change: \.uspec\/changes\/[\w-]+\/change\.md$/m.test(input) && input.includes('refunds/  feature');
     finish(ok ? 'docs/product/support/refunds/rules.md | The Refund window section says 14 days.\n\nNotes:\n- none' : 'No change.md or tree in the input.', sessionId);
+    return;
+  }
+  if (role === 'splitter') {
+    const nodes = (input.split('\nNodes to plan:\n')[1] ?? '').split('\n\n')[0].split('\n').filter(Boolean);
+    finish('# Split plans\n\n## Plans\n\n' + nodes.map(node => `### plans/${node.split('/').pop()}.md\n- Nodes: ${node}\n- After:\n- Reason: Independent component.\n`).join('\n'), sessionId);
     return;
   }
   if (role === 'planner') {

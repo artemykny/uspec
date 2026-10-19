@@ -14,13 +14,10 @@ Read `change.md`, every listed document, and the diffs of documents marked `diff
 
 ## Planning
 
-A plan says how the code of a set of nodes changes so that it matches their documents. Cut the work into plans by what can be done independently:
-
-- Code that must change together goes in one plan, even across nodes: a shared type, a contract and its only caller, a migration and the code that reads it.
-- Work that can be done and verified on its own goes in its own plan, so it is implemented in parallel.
-- If everything is intertwined, write one plan. Don't split for the sake of it.
-
-Every node to plan is in exactly one plan. A plan that needs another plan's work done first lists it in `after`; a plan already waits for the plans holding the nodes its nodes link to.
+The split is already approved. `Assigned plan:` gives the only file you may
+write; `Assigned nodes:` and `After:` give its exact frontmatter. Write that
+one implementation plan. Do not split, merge, rename, generate sibling plans,
+or modify node ownership/dependencies. Other planners may run concurrently.
 
 Each plan is `<Plans>/<id>.md`, with a short kebab-case id, in this format:
 
@@ -49,7 +46,7 @@ Leave out `after` when it is empty. When `change.md` says the change comes from 
 
 ## Rules
 
-- Write only the plan files, in the plans directory. Don't edit code or spec documents.
+- Write only the assigned plan file. Don't edit code or spec documents.
 - Plan from the documents, not from what you would like the code to be: a plan changes what the documents require and nothing else.
 - If a node can't be planned because its spec is missing something (a rule, a case, a contract), don't guess: return `failed` and say what is missing.
 

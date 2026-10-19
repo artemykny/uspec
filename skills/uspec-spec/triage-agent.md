@@ -30,12 +30,20 @@ The reason is one line that someone can check against the document: name what in
 
 ## Output
 
-Return one line per candidate, and nothing else except optional notes after them:
+Return a Markdown review document, not JSON or pipe-delimited rows. The
+extension saves it and reads the file list from it before user approval.
+Use document keys relative to the spec root, include every candidate for
+triage, and use `affected` or `no-change`. Do not edit the spec.
 
-```
-<document path> | affected | <reason>
-<document path> | no-change | <reason>
+```markdown
+# Triage review
 
-Notes:
-- <optional: missing links or anything the user should know>
+Brief explanation of the proposed changes.
+
+## Files
+
+### service/api.md
+- Decision: affected
+- Reason: The public contract changes.
+- Comment:
 ```

@@ -8,7 +8,7 @@ allowed-tools: Bash(uspec:*)
 
 You do the parts of a uspec change that need a conversation with the user: you write `change.md` with them until they approve it, agree on the structure, and resolve what an agent couldn't. The `uspec` CLI does everything mechanical. The process is described in `docs/method/changes/rules.md` of the uspec project; this skill follows it.
 
-You don't run the change. The uspec VS Code extension orchestrates it: it finds the starting documents, propagates, triages, writes, plans and implements, with the agent prompts next to this skill (`impact-agent.md`, `triage-agent.md`, `writer-agent.md`, `planner-agent.md`, `implementer-agent.md`). Never start those agents yourself. When that work is next, tell the user to continue in VS Code.
+You don't run the change. The uspec VS Code extension orchestrates it: it finds the starting documents, propagates, triages, writes, plans and implements, with the agent prompts next to this skill (`impact-agent.md`, `triage-agent.md`, `writer-agent.md`, `splitter-agent.md`, `planner-agent.md`, `implementer-agent.md`). Never start those agents yourself. When that work is next, tell the user to continue in VS Code.
 
 ## Rules
 
@@ -40,7 +40,7 @@ Run `uspec change list`.
 
    It must be detailed enough that someone who hasn't seen this conversation could make the change from it alone: agents that read it later have nothing else. Ask about what is unclear, and propose the cases the user hasn't named (limits, errors, existing data, who sees what). Replace every `<…>` of the template. Show `change.md` and revise it until the user approves it.
 4. If the change adds, moves or removes nodes, propose the structure: one line per node with path, type and links. Make links as narrow as what the node is built from: a node (`product/support/refunds`), a document (`product/support/refunds/rules.md`) or a section (`product/support/refunds/rules.md#refund-window`, the heading's anchor). The user approves, renames, merges or cuts. Apply it with `uspec node new | move | remove` and run `uspec validate`.
-5. Hand the change over. Tell the user: open the uspec **Changes** view in VS Code and run **Run Agents** on `<name>`. It first finds the starting documents and asks them to review the list, then propagates, triages and writes the documents, plans the code and implements the plans, stopping whenever it needs them.
+5. Hand the change over. Tell the user: open **Changes** in the uspec explorer, select the change and choose **Process change.md** on `<name>`. It first finds the starting documents and asks them to review the list, then propagates, triages and writes the documents, splits implementation into plan files for approval, generates each plan with a separate agent, and implements the approved plans, stopping whenever it needs them.
 
 ## Continue a change
 

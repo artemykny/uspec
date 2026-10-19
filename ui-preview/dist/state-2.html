@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style nonce="preview">:root{--vscode-font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--vscode-font-size:13px;--vscode-foreground:#cccccc;--vscode-textLink-foreground:#4daafc;--vscode-editor-font-family:monospace;--vscode-descriptionForeground:#969696;--vscode-errorForeground:#f48771;--vscode-charts-green:#89d185;--vscode-charts-blue:#4daafc;--vscode-focusBorder:#007fd4;--vscode-button-background:#0e639c;--vscode-button-foreground:white;--vscode-button-hoverBackground:#1177bb}body{background:#1f1f1f}h1{font-size:26px}
+  body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); padding: 0 1.5em 2em; }
+  a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: var(--vscode-editor-font-family); }
+  .summary, .detail, .todo { color: var(--vscode-descriptionForeground); }
+  .detail { white-space: pre-wrap; margin: 0.2em 0; }
+  .error { color: var(--vscode-errorForeground); }
+  ol.states, ol.sub { list-style: none; padding-left: 0; }
+  ol.sub { padding-left: 1.5em; }
+  ol.states li { margin: 0.4em 0; }
+  li.done > .mark { color: var(--vscode-charts-green); }
+  li.current > .mark { color: var(--vscode-charts-blue); }
+  li.current { font-weight: 600; }
+  div.current, section.current { font-weight: normal; color: var(--vscode-foreground); border-left: 2px solid var(--vscode-focusBorder); margin: 0.5em 0 0.5em 0.4em; padding: 0.2em 0 0.2em 1em; }
+  .waits { font-style: italic; }
+  h3 { font-size: 1em; margin: 0.8em 0 0.3em; }
+  button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 10px; margin: 2px 6px 2px 0; cursor: pointer; }
+  button:hover { background: var(--vscode-button-hoverBackground); }
+</style>
+<title>refund-window · state</title>
+</head>
+<body>
+<h1>refund-window</h1>
+<p class="summary">1 pending, 1 affected, 2 updated, 0 no-change; 0 to implement · baseline <code>a82c4d7</code></p><p><button data-action="runAgents">Run agents</button></p><ol class="states"><li class="done"><span class="mark">✓</span> 1. Waiting for the user</li><li class="done"><span class="mark">✓</span> 2. Selecting starting documents</li><li class="current"><span class="mark">▶</span> 3. Triage and write<div class="current"><p class="waits">Waits for you: 1 run to approve.</p><h3>Affected (1)</h3><ul><li><a href="#" data-action="openDoc" data-key="system/services/payments/api.md">system/services/payments/api.md</a> — Refund window is now 30 days.</li></ul><h3>Pending (1)</h3><ul><li><a href="#" data-action="openDoc" data-key="system/services/payments/logic.md">system/services/payments/logic.md</a> — depends on api.md</li></ul><h3>Updated (2)</h3><ul><li><a href="#" data-action="openDoc" data-key="product/support/refunds/rules.md">product/support/refunds/rules.md</a></li><li><a href="#" data-action="openDoc" data-key="experience/ops-console/refunds/states.md">experience/ops-console/refunds/states.md</a></li></ul><h3>Waiting for approval</h3><ul><li><a href="#" data-action="openDoc" data-key="system/services/payments/api.md">system/services/payments/api.md</a> — Extended the refund eligibility window to 30 days. <button data-action="showDiff" data-run="3" data-key="system/services/payments/api.md">Show diff</button><button data-action="approve" data-run="3" data-key="system/services/payments/api.md">Approve</button><button data-action="reject" data-run="3" data-key="system/services/payments/api.md">Reject</button></li></ul></div></li><li class="todo"><span class="mark">○</span> 4. Implementation<ol class="sub"><li class="todo"><span class="mark">○</span>  Making plans</li><li class="todo"><span class="mark">○</span>  Running plans</li></ol></li></ol>
+<script nonce="preview">
+  const vscode = {postMessage: m => parent.postMessage({uspecPreview:true,...m},location.origin)};
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    e.preventDefault();
+    const m = { action: el.dataset.action };
+    if (el.dataset.run) m.run = Number(el.dataset.run);
+    if (el.dataset.key) m.key = el.dataset.key;
+    if (el.dataset.plan) m.plan = el.dataset.plan;
+    vscode.postMessage(m);
+  });
+</script>
+</body>
+</html>

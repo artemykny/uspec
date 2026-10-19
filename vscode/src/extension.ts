@@ -13,6 +13,7 @@ import { StatusBar } from './statusbar';
 import { ChangesViewProvider } from './views/changesView';
 import { NodeViewProvider } from './views/nodeView';
 import { SpecTreeProvider, type SpecEl } from './views/specTree';
+import { NodeWindow } from './views/nodeWindow';
 import { StateWindows } from './views/stateWindow';
 import { TypesViewProvider } from './views/typesView';
 
@@ -30,13 +31,14 @@ export interface UspecApi {
 export function activate(ctx: vscode.ExtensionContext): UspecApi {
   const manager = new ProjectManager();
   const content = new ContentProvider();
-  const agents = new AgentManager(manager, content, ctx.extensionPath);
+  const agents = new AgentManager(manager, content, ctx.extensionPath, ctx.workspaceState);
 
-  const specTree = new SpecTreeProvider(manager);
-  const specTreeView = vscode.window.createTreeView<SpecEl>('uspec.specTree', { treeDataProvider: specTree, showCollapseAll: true });
-  const nodeView = new NodeViewProvider(manager);
   const changes = new ChangesViewProvider(manager, agents);
   const types = new TypesViewProvider(manager);
+  const specTree = new SpecTreeProvider(manager, changes, types);
+  const specTreeView = vscode.window.createTreeView<SpecEl>('uspec.specTree', { treeDataProvider: specTree, showCollapseAll: true });
+  const nodeView = new NodeViewProvider(manager);
+  const nodeWindow = new NodeWindow();
   const stateWindows = new StateWindows(manager, agents);
 
   ctx.subscriptions.push(
@@ -49,9 +51,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     changes,
     types,
     stateWindows,
-    vscode.window.createTreeView('uspec.node', { treeDataProvider: nodeView }),
-    vscode.window.createTreeView('uspec.changes', { treeDataProvider: changes }),
-    vscode.window.createTreeView('uspec.types', { treeDataProvider: types, showCollapseAll: true }),
+    nodeWindow,
     new Diagnostics(manager),
     new Decorations(manager),
     new Editing(manager),
@@ -77,7 +77,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     vscode.window.onDidChangeActiveTextEditor(follow),
     specTreeView.onDidChangeSelection((e) => {
       const el = e.selection[0];
-      if (el?.kind === 'node') nodeView.setTarget({ p: el.p, node: el.node });
+      if (el?.kind === 'node') { nodeView.setTarget({ p: el.p, node: el.node }); nodeWindow.show(el.p, el.node); }
       else if (el?.kind === 'doc' && !el.missing) nodeView.setTarget({ p: el.p, node: el.node, doc: el.doc });
     }),
     manager.onDidChange(() => {
@@ -88,7 +88,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     }),
   );
 
-  const ready = manager.discover().then(() => follow(vscode.window.activeTextEditor));
+  const ready = manager.discover().then(() => { agents.restore(); follow(vscode.window.activeTextEditor); });
   return { manager, agents, specTree, changes, nodeView, stateWindows, ready };
 }
 

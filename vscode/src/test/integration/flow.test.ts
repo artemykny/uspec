@@ -55,7 +55,10 @@ describe('uspec extension', () => {
   });
 
   it('shows the tree as nodes and documents', async () => {
-    const [root] = api.specTree.getChildren() as SpecEl[];
+    const roots = api.specTree.getChildren() as SpecEl[];
+    assert.deepStrictEqual(roots.map(r => api.specTree.getTreeItem(r).label), ['Changes', 'Node types', 'Specification']);
+    assert.strictEqual(api.specTree.getTreeItem(roots[0]).collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
+    const [root] = api.specTree.getChildren(roots[2]);
     assert.deepStrictEqual([root.kind, (root as { node: string }).node], ['node', '']);
     const payments: SpecEl = { kind: 'node', p, node: 'system/services/payments' };
     const kids = api.specTree.getChildren(payments).map((k) => (k.kind === 'doc' ? `${k.doc}.md` : k.kind));
@@ -95,7 +98,7 @@ describe('uspec extension', () => {
     // The state window: waiting for the user, who still has the template to fill in.
     let stage = (await api.stateWindows.stage(p, c))!;
     assert.deepStrictEqual([stage.stage, stage.waitsFor, stage.templateLeft], ['waiting', 'user', true]);
-    assert.deepStrictEqual(stage.marks, { waiting: 'current', starting: 'todo', spec: 'todo', planning: 'todo', implementing: 'todo' });
+    assert.deepStrictEqual(stage.marks, { waiting: 'current', starting: 'todo', spec: 'todo', splitting: 'todo', planning: 'todo', implementing: 'todo' });
     fs.writeFileSync(
       file(`.uspec/changes/${c}/change.md`),
       '# Refund window: 30 days\n\n## Why\n\nCustomers miss the window.\n\n## What changes\n\nA refund can be requested up to 30 days after delivery.\n\n' +
@@ -112,7 +115,7 @@ describe('uspec extension', () => {
     await vscode.commands.executeCommand('uspec.change.showState', { p, name: c });
     assert.strictEqual(api.stateWindows.size, 1);
     assert.strictEqual(api.stateWindows.panelFor(p, c), panel);
-    await waitFor('the window to show the state', () => panel.webview.html.includes('Waiting for the user'));
+    await waitFor('the window to show the state', () => panel.webview.html.includes('Process change.md'));
 
     // The Changes view shows the change, active, with the impact step under Next.
     const [change] = api.changes.getChildren() as ChangeEl[];
@@ -135,9 +138,21 @@ describe('uspec extension', () => {
     const started = p.change(c)!.docs.get('product/support/refunds/rules.md')!;
     assert.deepStrictEqual([started.state, started.via], ['affected', ['change.md']]);
 
-    // Then the spec side and the planner, which waits for the plans to be read.
-    await api.agents.runChange(p, c);
-    await api.manager.load(p);
+    // Review every triage batch, then approve the split before separate planners run.
+    for (let round = 0; round < 20; round++) {
+      await api.agents.runChange(p, c);
+      await api.manager.load(p);
+      const waiting = api.agents.runsOf(p, c).filter(r => r.state === 'needs-approval');
+      assert.ok(waiting.length, 'workflow stops at a review gate');
+      if (waiting.some(r => r.role === 'planner')) break;
+      for (const run of waiting) {
+        if (run.role === 'triage') {
+          assert.ok(run.proposal?.endsWith('.md'));
+          assert.ok((await api.agents.proposalFiles(run)).length);
+        }
+        await api.agents.approve(run);
+      }
+    }
     let data = p.change(c)!;
     assert.strictEqual(data.counts.pending + data.counts.affected, 0, 'every document is settled');
     assert.strictEqual(data.docs.get('product/support/refunds/rules.md')?.state, 'updated');
@@ -146,12 +161,13 @@ describe('uspec extension', () => {
     assert.strictEqual(data.docs.get('system/services/payments/logic.md')?.state, 'updated');
     assert.strictEqual(data.docs.get('system/services/payments/api.md')?.state, 'no-change');
     assert.strictEqual(data.docs.get('system/services/payments/compliance.md')?.state, 'updated');
-    const planner = api.agents.runsOf(p, c).find((r) => r.role === 'planner')!;
+    let planner = api.agents.runsOf(p, c).find((r) => r.role === 'planner')!;
     assert.strictEqual(planner.state, 'needs-approval');
     stage = changeStage(data, api.agents.runsOf(p, c));
     assert.strictEqual(stage.stage, 'planning');
-    assert.deepStrictEqual(stage.marks, { waiting: 'done', starting: 'done', spec: 'done', planning: 'current', implementing: 'todo' });
-    assert.deepStrictEqual(stage.approvals, [planner]);
+    assert.deepStrictEqual(stage.marks, { waiting: 'done', starting: 'done', spec: 'done', splitting: 'done', planning: 'current', implementing: 'todo' });
+    assert.strictEqual(stage.approvals.length, 2);
+    assert.ok(stage.approvals.every(r => r.role === 'planner' && r.plans.length === 1));
     assert.deepStrictEqual(data.plans.map((x) => [x.plan, x.nodes, x.state]), [
       ['payments', ['system/services/payments'], 'pending'],
       ['refunds', ['experience/ops-console/refunds'], 'pending'],
@@ -161,9 +177,30 @@ describe('uspec extension', () => {
     const planEls = api.changes.getChildren({ kind: 'group', p, name: c, group: 'plans' });
     assert.deepStrictEqual(planEls.map((e) => api.changes.getTreeItem(e).contextValue), ['uspec.plan;pending;ready;idle', 'uspec.plan;pending;waiting;idle']);
 
+    // Re-running the loop or launching a plan directly must not bypass approval.
+    await api.agents.runChange(p, c);
+    await api.agents.runImplementer(p, c, 'payments');
+    assert.ok(!api.agents.runsOf(p, c).some((r) => r.role === 'implementer'));
+    // Losing the in-memory runs (as on reload) must recreate a review.
+    const originalRuns = [...api.agents.runs];
+    const originalPlanner = planner;
+    api.agents.runs = [];
+    await api.agents.runImplementer(p, c, 'payments');
+    planner = api.agents.runsOf(p, c).find((r) => r.role === 'planner')!;
+    assert.strictEqual(planner.state, 'needs-approval');
+    for (const run of originalRuns.filter(r => r.role === 'planner')) await api.agents.approve(run);
+    for (const run of api.agents.runsOf(p, c).filter(r => r.role === 'planner')) await api.agents.approve(run);
+    // Changing approved content invalidates approval.
+    fs.appendFileSync(file(planner.plans[0]), '\nReview amendment.\n');
+    await api.agents.runImplementer(p, c, 'payments');
+    planner = api.agents.runsOf(p, c).find((r) => r.role === 'planner' && r.state === 'needs-approval')!;
+    assert.ok(planner);
     await api.agents.approve(planner);
+    // Approved fingerprints remain usable without the in-memory review.
+    api.agents.runs = [];
     assert.strictEqual(planner.state, 'recorded');
     await api.agents.runChange(p, c);
+    api.agents.runs.unshift(...originalRuns);
     await api.manager.load(p);
     data = p.change(c)!;
     assert.strictEqual(data.impl.get('system/services/payments'), 'done');
@@ -215,7 +252,8 @@ describe('uspec extension', () => {
     assert.ok(calls.filter((x) => x.role === 'triage').every((x) => model(x) === 'sonnet'));
     assert.ok(calls.filter((x) => x.role !== 'triage').every((x) => model(x) === undefined));
     const plannerCall = calls.find((x) => x.role === 'planner')!;
-    assert.ok(plannerCall.args.includes(`Write(.uspec/changes/${c}/plans/**)`));
+    assert.ok(plannerCall.args.some(a => /^Write\(.+\/plans\/(payments|refunds)\.md\)$/.test(a)));
+    assert.ok(!plannerCall.args.some(a => a.includes('plans/**')));
     assert.ok(!plannerCall.args.some((a) => a.startsWith('Edit(docs') || a.startsWith('Edit(services')));
     const implementer = calls.find((x) => x.role === 'implementer')!;
     assert.ok(implementer.args.includes('Edit(services/payments/**)'));
@@ -274,6 +312,52 @@ describe('uspec extension', () => {
     } finally {
       docs.forEach((d, i) => fs.writeFileSync(file(`docs/${d}`), before[i]));
       fs.writeFileSync(rules, rulesBefore);
+      fs.rmSync(file(`.uspec/changes/${c}`), { recursive: true, force: true });
+      await api.manager.load(p);
+    }
+  });
+
+  it('keeps writer reviews collapsed, opens native diffs and restores the same author session', async function () {
+    this.timeout(60_000);
+    const c = 'review-recovery', key = 'system/services/payments/compliance.md';
+    const target = file(`docs/${key}`), original = fs.readFileSync(target, 'utf8');
+    const config = vscode.workspace.getConfiguration('uspec');
+    await config.update('agents.approveWrites', 'always', vscode.ConfigurationTarget.Workspace);
+    await api.manager.mutate(p, ['change', 'new', c]);
+    await api.manager.mutate(p, ['change', 'set', c, key, 'affected', '--reason', 'Review test']);
+    try {
+      const run = (await api.agents.runWriter(p, c, 'system/services/payments', [key]))!;
+      assert.strictEqual(run.state, 'needs-approval');
+      assert.ok(run.terminal && vscode.window.terminals.includes(run.terminal));
+      assert.notStrictEqual(vscode.window.activeTerminal, run.terminal, 'agent terminal starts hidden');
+      await api.stateWindows.show(p, c);
+      const panel = api.stateWindows.panelFor(p, c)!;
+      await waitFor('the writer review to finish rendering', () => panel.webview.html.includes('data-action="showDiff"'));
+      assert.match(panel.webview.html, /Open diff in VS Code/);
+      assert.match(panel.webview.html, /<details data-diff=/);
+      assert.ok(!/<details[^>]*\sopen(?:[ >])/.test(panel.webview.html), 'diffs default to collapsed');
+      assert.ok(!panel.webview.html.includes('write-review.md'));
+      await api.agents.showDiff(run, key);
+      const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+      assert.ok(input instanceof vscode.TabInputTextDiff, 'opens the native diff editor');
+      assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), original);
+      const session = run.sessionId;
+      await api.agents.reviseWriter(run, [{ document: key, selected: true, comment: 'Explain the rule clearly' }]);
+      assert.strictEqual(run.sessionId, session, 'revision resumes the writer session');
+      assert.strictEqual(run.docs[0].snapshot, original, 'revision retains the original review base');
+      api.agents.runs = [];
+      api.agents.restore();
+      const restored = api.agents.runsOf(p, c).find(r => r.role === 'writer')!;
+      assert.strictEqual(restored.sessionId, session);
+      assert.strictEqual(restored.state, 'needs-approval');
+      assert.strictEqual((await vscode.workspace.openTextDocument(restored.docs[0].snapshotUri!)).getText(), original);
+      await api.agents.approve(restored);
+      await api.manager.load(p);
+      assert.strictEqual(p.change(c)?.docs.get(key)?.state, 'updated');
+      panel.dispose();
+    } finally {
+      await config.update('agents.approveWrites', 'never', vscode.ConfigurationTarget.Workspace);
+      fs.writeFileSync(target, original);
       fs.rmSync(file(`.uspec/changes/${c}`), { recursive: true, force: true });
       await api.manager.load(p);
     }

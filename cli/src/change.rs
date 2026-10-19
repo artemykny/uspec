@@ -123,7 +123,7 @@ impl Status {
                     let v: Vec<String> = d.via.iter().map(|v| q(v)).collect();
                     fields.push(format!("via: [{}]", v.join(", ")));
                 }
-                s.push_str(&format!("  {k}: {{{}}}\n", fields.join(", ")));
+                s.push_str(&format!("  {}: {{{}}}\n", q(k), fields.join(", ")));
             }
         }
         if self.implementation.is_empty() {
@@ -131,7 +131,7 @@ impl Status {
         } else {
             s.push_str("implementation:\n");
             for (k, done) in &self.implementation {
-                s.push_str(&format!("  {k}: {}\n", if *done { "done" } else { "pending" }));
+                s.push_str(&format!("  {}: {}\n", q(k), if *done { "done" } else { "pending" }));
             }
         }
         s

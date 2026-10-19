@@ -18,7 +18,8 @@ The prompts of the agents that work on a change sit next to `uspec-spec`, the sk
 | Impact | `impact-agent.md` | change without documents | `change.md` and `uspec tree` |
 | Triage | `triage-agent.md` | batch of candidates from `uspec change next` | `change.md`, the diffs and the candidates |
 | Writer | `writer-agent.md` | node with documents to write | the output of `uspec context <node> --document <id>...`, one `--document` per document |
-| Planner | `planner-agent.md` | change with nodes to plan | `change.md` and the output of `uspec context <node> --implement` for each node to plan |
+| Splitter | `splitter-agent.md` | settled change | change and implementation contexts, returns the Markdown split for approval |
+| Planner | `planner-agent.md` | one approved plan | `change.md` and the output of `uspec context <node> --implement` for each node to plan |
 | Implementer | `implementer-agent.md` | ready plan | the plan and the output of `uspec context <node> --implement` for each of its nodes |
 
 `uspec-review` keeps its own subagent, the **reviewer** (`reviewer-agent.md`, one run per node in scope, reading the node's `uspec context` output), since a review doesn't change the spec and needs no orchestration.

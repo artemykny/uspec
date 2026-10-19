@@ -78,7 +78,7 @@ A dependency on a [section](../spec-tree/) reaches only when that section change
 - A node's ready documents are written together. A document that derives from an unsettled document of its node still waits for it, so one node can get more than one writer in a change.
 - Ready items in different nodes are handled in parallel.
 
-**Plans.** Once every document is settled, the code is planned before any of it is written. A planner reads `change.md` and the [context](../context/) of every node under `implementation`, with its code, and writes one or more plans in `plans/<id>.md`. A plan says how the code of a set of nodes changes: the approach, the steps, and how the result is verified. Work that can be done independently goes into separate plans, so it is implemented in parallel; work that is intertwined stays in one plan, however many nodes it spans. A plan starts with frontmatter:
+**Plans.** Once every document is settled, split implementation into plan files before generating any implementation plan. The splitter reads the change and implementation contexts, and produces `plan-split.md` with one entry per `plans/<id>.md`, nodes and optional dependencies. The user approves this split. One independent planner then writes each assigned plan, with only that plan's node contexts and permission to edit only its file. Generation can run in parallel even when implementation is sequential. There is no global implementation plan. A plan explains the approach, concrete steps and verification for its nodes. All generated plans are reviewed before implementation starts. A plan starts with frontmatter:
 
 | Field | Meaning |
 |---|---|

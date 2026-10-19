@@ -1,15 +1,17 @@
 // Agent runs (docs/vscode/overview.md#agents): what each role reads, what it may do, and how its
 // result is read. Nothing here touches VS Code or starts a process.
+import { splitFrontmatter } from './templates';
 import type { NextJson } from './model';
 import { nodeKey, normaliseCodePath, splitDoc, toDocKey } from './paths';
 
-export type Role = 'impact' | 'triage' | 'writer' | 'planner' | 'implementer' | 'reviewer';
+export type Role = 'impact' | 'triage' | 'writer' | 'splitter' | 'planner' | 'implementer' | 'reviewer';
 
 /** Each role's prompt: a file next to a skill (docs/skills/overview.md#agent-prompts). */
 export const PROMPTS: Record<Role, { skill: string; file: string }> = {
   impact: { skill: 'uspec-spec', file: 'impact-agent.md' },
   triage: { skill: 'uspec-spec', file: 'triage-agent.md' },
   writer: { skill: 'uspec-spec', file: 'writer-agent.md' },
+  splitter: { skill: 'uspec-spec', file: 'splitter-agent.md' },
   planner: { skill: 'uspec-spec', file: 'planner-agent.md' },
   implementer: { skill: 'uspec-spec', file: 'implementer-agent.md' },
   reviewer: { skill: 'uspec-review', file: 'reviewer-agent.md' },
@@ -89,7 +91,8 @@ export function agentPrompt(prompt: string, input: string, mode?: string): strin
 
 /** Whether `change.md` says the change comes from an experiment, so implementers check instead of write. */
 export function fromExperiment(changeMd: string): boolean {
-  return /\bexperiment(s|al)?\b/i.test(changeMd);
+  const { front } = splitFrontmatter(changeMd);
+  return /^mode:\s*(?:check|"check"|'check')\s*(?:#.*)?$/m.test(front ?? '');
 }
 
 export interface Permissions {
@@ -109,15 +112,16 @@ function editRules(path: string, dir: boolean): string[] {
 
 export function permissions(
   role: Role,
-  opts: { documents?: string[]; extraDirs?: string[]; plansDir?: string; codePaths?: { path: string; dir: boolean }[]; implementerAllowed?: string[] } = {},
+  opts: { documents?: string[]; extraDirs?: string[]; plansDir?: string; planFile?: string; codePaths?: { path: string; dir: boolean }[]; implementerAllowed?: string[] } = {},
 ): Permissions {
   switch (role) {
     case 'impact':
     case 'triage':
     case 'reviewer':
+    case 'splitter':
       return { tools: ['Read', 'Glob', 'Grep', 'Bash'], allowed: READ };
     case 'planner':
-      return { tools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'], allowed: [...READ, ...(opts.plansDir ? editRules(opts.plansDir, true) : [])] };
+      return { tools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'], allowed: [...READ, ...(opts.planFile ? editRules(opts.planFile, false) : opts.plansDir ? editRules(opts.plansDir, true) : [])] };
     case 'writer': {
       const allowed = [...READ];
       for (const d of opts.documents ?? []) allowed.push(...editRules(d, false));

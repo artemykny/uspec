@@ -19,7 +19,7 @@ The life of a product:
 1. **Set up.** The user chooses the node types, from a ready-made set or from scratch, and creates the root node. The types then belong to the project, and the user edits them. They decide how the whole tree is cut, so they are worth getting right first. From here the tree grows only through changes, and it contains only what is being built: planned work is described in the root's documents.
 2. **Change.** All work is a [change](changes/), in one of two modes:
    - **Change spec.** The user first describes the change in `change.md`, with a worked example, together with an agent, and approves the structure. An agent then finds the documents the change starts at. From them the change moves down the tree and along links to every document that depends on it. The user reviews documents; agents write them.
-   - **Implement.** An agent plans how the code of the nodes whose spec changed is updated; one agent per plan updates the code from the nodes' documents and context, and verifies it against them. Implement always comes after a spec change, never instead of one.
+   - **Implement.** An agent splits the implementation into plan files for approval, then one independent agent generates each plan; one agent per plan updates the code from the nodes' documents and context, and verifies it against them. Implement always comes after a spec change, never instead of one.
 
    An orchestrator, the [VS Code extension](../vscode/overview.md), runs the agents and records their results; the user steps in to approve and to resolve what an agent can't.
 3. **Experiment.** Code tried out directly, outside a change, is kept only through an [experiment](experiments/): it is turned into a spec change, and the code then follows that change as usual.

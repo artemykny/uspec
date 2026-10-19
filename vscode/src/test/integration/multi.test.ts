@@ -35,7 +35,7 @@ describe('uspec extension on nested projects', () => {
   });
 
   it('shows one root per project', () => {
-    const roots = api.specTree.getChildren() as SpecEl[];
+    const roots = api.specTree.getChildren({ kind: 'root', branch: 'specification' }) as SpecEl[];
     assert.deepStrictEqual(
       roots.map((r) => r.kind),
       ['project', 'project'],
