@@ -8,6 +8,7 @@ import type { UspecApi } from '../../extension';
 import type { Project } from '../../projects';
 import type { ChangeEl } from '../../views/changesView';
 import type { SpecEl } from '../../views/specTree';
+import { changeStage } from '../../views/stateWindow';
 
 const work = process.env.USPEC_TEST_WORKSPACE!;
 const file = (rel: string) => path.join(work, ...rel.split('/'));
@@ -91,12 +92,27 @@ describe('uspec extension', () => {
     await api.manager.mutate(p, ['change', 'new', c]);
     await api.manager.load(p);
     assert.ok(fs.readFileSync(file(`.uspec/changes/${c}/change.md`), 'utf8').includes('## Worked example'), 'change.md starts from the template');
+    // The state window: waiting for the user, who still has the template to fill in.
+    let stage = (await api.stateWindows.stage(p, c))!;
+    assert.deepStrictEqual([stage.stage, stage.waitsFor, stage.templateLeft], ['waiting', 'user', true]);
+    assert.deepStrictEqual(stage.marks, { waiting: 'current', starting: 'todo', spec: 'todo', planning: 'todo', implementing: 'todo' });
     fs.writeFileSync(
       file(`.uspec/changes/${c}/change.md`),
       '# Refund window: 30 days\n\n## Why\n\nCustomers miss the window.\n\n## What changes\n\nA refund can be requested up to 30 days after delivery.\n\n' +
         '## Worked example\n\nDelivered on 1 March, refund asked on 20 March: accepted.\n\n## Out of scope\n\nPayouts.\n',
     );
     await api.manager.load(p);
+    stage = (await api.stateWindows.stage(p, c))!;
+    assert.deepStrictEqual([stage.stage, stage.templateLeft], ['waiting', false]);
+
+    // Show state opens one window per change; showing it again reveals the same one.
+    await vscode.commands.executeCommand('uspec.change.showState', { p, name: c });
+    const panel = api.stateWindows.panelFor(p, c)!;
+    assert.ok(panel);
+    await vscode.commands.executeCommand('uspec.change.showState', { p, name: c });
+    assert.strictEqual(api.stateWindows.size, 1);
+    assert.strictEqual(api.stateWindows.panelFor(p, c), panel);
+    await waitFor('the window to show the state', () => panel.webview.html.includes('Waiting for the user'));
 
     // The Changes view shows the change, active, with the impact step under Next.
     const [change] = api.changes.getChildren() as ChangeEl[];
@@ -111,6 +127,9 @@ describe('uspec extension', () => {
     const impact = api.agents.runsOf(p, c).find((r) => r.role === 'impact')!;
     assert.strictEqual(impact.state, 'needs-approval');
     assert.deepStrictEqual(impact.starting.map((d) => d.document), ['product/support/refunds/rules.md']);
+    stage = changeStage(p.change(c)!, api.agents.runsOf(p, c));
+    assert.deepStrictEqual([stage.stage, stage.waitsFor, stage.approvals], ['starting', 'user', [impact]]);
+    assert.strictEqual(stage.marks.waiting, 'done');
     await api.agents.keepStarting(impact, ['product/support/refunds/rules.md']);
     await api.manager.load(p);
     const started = p.change(c)!.docs.get('product/support/refunds/rules.md')!;
@@ -129,6 +148,10 @@ describe('uspec extension', () => {
     assert.strictEqual(data.docs.get('system/services/payments/compliance.md')?.state, 'updated');
     const planner = api.agents.runsOf(p, c).find((r) => r.role === 'planner')!;
     assert.strictEqual(planner.state, 'needs-approval');
+    stage = changeStage(data, api.agents.runsOf(p, c));
+    assert.strictEqual(stage.stage, 'planning');
+    assert.deepStrictEqual(stage.marks, { waiting: 'done', starting: 'done', spec: 'done', planning: 'current', implementing: 'todo' });
+    assert.deepStrictEqual(stage.approvals, [planner]);
     assert.deepStrictEqual(data.plans.map((x) => [x.plan, x.nodes, x.state]), [
       ['payments', ['system/services/payments'], 'pending'],
       ['refunds', ['experience/ops-console/refunds'], 'pending'],
@@ -146,6 +169,10 @@ describe('uspec extension', () => {
     assert.strictEqual(data.impl.get('system/services/payments'), 'done');
     assert.strictEqual(data.impl.get('experience/ops-console/refunds'), 'done');
     assert.ok(data.plans.every((x) => x.state === 'done'));
+    stage = changeStage(data, api.agents.runsOf(p, c));
+    assert.strictEqual(stage.stage, 'closable');
+    assert.ok(Object.values(stage.marks).every((m) => m === 'done'));
+    await waitFor('the window to offer Close', () => panel.webview.html.includes('data-action="close"'));
 
     const runs = api.agents.runsOf(p, c);
     assert.ok(runs.some((r) => r.role === 'triage' && r.state === 'recorded'));
@@ -203,6 +230,9 @@ describe('uspec extension', () => {
     await vscode.commands.executeCommand('uspec.change.close', { kind: 'change', p, name: c });
     await waitFor('the change to close', () => p.changes.length === 0);
     assert.ok(!fs.existsSync(file(`.uspec/changes/${c}`)));
+    await waitFor('the window to say the change is closed', () => panel.webview.html.includes(`${c} is closed.`));
+    panel.dispose();
+    assert.strictEqual(api.stateWindows.size, 0);
   });
 
   it('runs a document’s node writer from Run writer', async function () {
@@ -222,6 +252,9 @@ describe('uspec extension', () => {
       p.change(c)?.next?.write.map((w) => [w.node, w.documents.map((d) => d.document)]),
       [['system/services/payments', docs]],
     );
+    // Affected documents make Triage and write the current state.
+    const stage = changeStage(p.change(c)!, api.agents.runsOf(p, c));
+    assert.deepStrictEqual([stage.stage, stage.marks.waiting, stage.marks.starting, stage.marks.planning], ['spec', 'done', 'done', 'todo']);
 
     // Next lists the documents to write grouped by node.
     const write = api.changes.getChildren({ kind: 'nextWrite', p, name: c });

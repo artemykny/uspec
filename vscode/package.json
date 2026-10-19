@@ -185,6 +185,12 @@
         "icon": "$(pass)"
       },
       {
+        "command": "uspec.change.showState",
+        "title": "Show State",
+        "category": "uspec",
+        "icon": "$(pulse)"
+      },
+      {
         "command": "uspec.change.openChangeMd",
         "title": "Open change.md",
         "category": "uspec"
@@ -533,9 +539,19 @@
           "group": "inline@3"
         },
         {
+          "command": "uspec.change.showState",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "inline@4"
+        },
+        {
           "command": "uspec.agents.runChange",
           "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
           "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.change.showState",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "3_change@0"
         },
         {
           "command": "uspec.agents.stopChange",

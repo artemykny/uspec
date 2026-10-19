@@ -13,6 +13,7 @@ import { StatusBar } from './statusbar';
 import { ChangesViewProvider } from './views/changesView';
 import { NodeViewProvider } from './views/nodeView';
 import { SpecTreeProvider, type SpecEl } from './views/specTree';
+import { StateWindows } from './views/stateWindow';
 import { TypesViewProvider } from './views/typesView';
 
 /** What the integration tests reach through `extension.exports`. */
@@ -22,6 +23,7 @@ export interface UspecApi {
   specTree: SpecTreeProvider;
   changes: ChangesViewProvider;
   nodeView: NodeViewProvider;
+  stateWindows: StateWindows;
   ready: Promise<void>;
 }
 
@@ -35,6 +37,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
   const nodeView = new NodeViewProvider(manager);
   const changes = new ChangesViewProvider(manager, agents);
   const types = new TypesViewProvider(manager);
+  const stateWindows = new StateWindows(manager, agents);
 
   ctx.subscriptions.push(
     manager,
@@ -45,6 +48,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     nodeView,
     changes,
     types,
+    stateWindows,
     vscode.window.createTreeView('uspec.node', { treeDataProvider: nodeView }),
     vscode.window.createTreeView('uspec.changes', { treeDataProvider: changes }),
     vscode.window.createTreeView('uspec.types', { treeDataProvider: types, showCollapseAll: true }),
@@ -55,7 +59,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     new StatusBar(manager, agents),
   );
 
-  registerCommands(ctx, { manager, agents, content, specTree, specTreeView, nodeView, extensionPath: ctx.extensionPath });
+  registerCommands(ctx, { manager, agents, content, specTree, specTreeView, nodeView, stateWindows, extensionPath: ctx.extensionPath });
 
   // The Node view and the Spec Tree follow the active file; a selection in the Spec Tree shows its node.
   const follow = (editor: vscode.TextEditor | undefined) => {
@@ -85,7 +89,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
   );
 
   const ready = manager.discover().then(() => follow(vscode.window.activeTextEditor));
-  return { manager, agents, specTree, changes, nodeView, ready };
+  return { manager, agents, specTree, changes, nodeView, stateWindows, ready };
 }
 
 export function deactivate(): void {

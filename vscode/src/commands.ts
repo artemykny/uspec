@@ -15,6 +15,7 @@ import { ensureSkills, installSkills, openClaude } from './terminal';
 import type { NodeViewProvider } from './views/nodeView';
 import { contextArgs } from './views/nodeView';
 import type { SpecEl, SpecTreeProvider } from './views/specTree';
+import type { StateWindows } from './views/stateWindow';
 
 export interface Services {
   manager: ProjectManager;
@@ -23,6 +24,7 @@ export interface Services {
   specTree: SpecTreeProvider;
   specTreeView: vscode.TreeView<SpecEl>;
   nodeView: NodeViewProvider;
+  stateWindows: StateWindows;
   extensionPath: string;
 }
 
@@ -497,6 +499,11 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     if (!c) return;
     await manager.mutate(c.p, ['change', 'close', c.name]);
     void vscode.window.showInformationMessage(`Closed ${c.name}. Commit the spec and the code together.`);
+  });
+
+  reg('uspec.change.showState', async (arg?: any) => {
+    const c = await changeRef(arg);
+    if (c) await s.stateWindows.show(c.p, c.name);
   });
 
   reg('uspec.change.openChangeMd', async (arg?: any) => {

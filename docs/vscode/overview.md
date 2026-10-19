@@ -36,11 +36,22 @@ The extension adds a uspec container to the activity bar with four views.
 - **Implementation**: the nodes with their state.
 - `change.md` and `status.yaml`.
 
-Change actions: **New change** (asks for a kebab-case name, runs `uspec change new` and opens `change.md` to fill in from the template; or **Start change in Claude Code** to write it with `uspec-spec`), **Close** (runs `uspec change close` and shows what blocks it), **Review diffs** (every updated document's diff since the baseline in one view), and the agent actions below. Document actions: **Diff since baseline**, **Record as updated** (shows what it propagated to), **Mark affected** and **Mark no-change** (ask for the reason), **Add to change** on a document not in it (marks it `affected` as a starting document, asking for the reason), **Run writer** (runs the writer of the document's node, with that document and the node's other documents under `write`). Node actions: **Mark done**. Plan actions: **Run implementer**, **Open plan**. Every state change runs `uspec change set`.
+Change actions: **New change** (asks for a kebab-case name, runs `uspec change new` and opens `change.md` to fill in from the template; or **Start change in Claude Code** to write it with `uspec-spec`), **Show state** (opens the change state window below), **Close** (runs `uspec change close` and shows what blocks it), **Review diffs** (every updated document's diff since the baseline in one view), and the agent actions below. Document actions: **Diff since baseline**, **Record as updated** (shows what it propagated to), **Mark affected** and **Mark no-change** (ask for the reason), **Add to change** on a document not in it (marks it `affected` as a starting document, asking for the reason), **Run writer** (runs the writer of the document's node, with that document and the node's other documents under `write`). Node actions: **Mark done**. Plan actions: **Run implementer**, **Open plan**. Every state change runs `uspec change set`.
+
+**Change state.** A window in the main editor area, not a view in the sidebar, that shows where a change is in its workflow, so the user sees what is happening, what it waits for and what comes next. **Show state** on a change, or a click on the status bar item for the active change, opens it. It lists the change's states in order, each marked done, current or to come, and for the current one what it waits for (the user or running agents) with its actions. The state is read from `change next` and `change status` and from the change's agent runs:
+
+1. **Waiting for the user**: the change has just been opened: `change next` lists `impact` and no impact run has started. The user writes and approves `change.md`; the window says whether it is still the template, with **Open change.md**, **Continue in Claude Code** and **Run agents**.
+2. **Selecting starting documents**: the impact run is running, or the starting documents it found wait for the user, with **Approve** and **Reject** as in the Changes view.
+3. **Triage and write**: documents of the change are `pending` or `affected`. Triage runs and writers repeat until every document is settled; the window shows the documents per state, the runs going on, the updates waiting for approval and the blocked writers.
+4. **Implementation**: every document is settled.
+   - **Making plans**: `change next` lists `plan`, or the plans wait for approval; the planner run and the plan errors.
+   - **Running plans**: the plans with their state, their nodes, what they come after and their implementer runs.
+
+When nothing is listed and nothing is left, it says the change can be closed, with **Close**. A gap or an update that sends the change back to the spec makes **Triage and write** current again. Like the views, it updates live.
 
 **Node Types.** Each type with its description, documents (required or optional, internal, extra, derives from), allowed children and allowed links, from `uspec types`. Types and documents open their `node-type.yaml` and templates.
 
-**Status bar.** The active change and what is next (`refund-window · find starting documents`, `refund-window · 2 to triage · 1 to write`, `refund-window · plan`, `refund-window · 2 plans to implement`), and the node of the active file.
+**Status bar.** The active change and what is next (`refund-window · find starting documents`, `refund-window · 2 to triage · 1 to write`, `refund-window · plan`, `refund-window · 2 plans to implement`), and the node of the active file. Clicking the active change opens its change state window.
 
 **Badges.** In the Spec Tree and the Explorer, documents of the active change carry their state (`P` pending, `A` affected, `U` updated, `✓` no-change), nodes under implementation `I` until done, and drifting nodes and their code paths `D`. Unwritten documents (empty, or still the template's body) are dimmed.
 
@@ -133,7 +144,7 @@ TypeScript in [vscode/](../../vscode/), bundled with esbuild into `dist/extensio
 | `src/core/links.ts` | Links and sections: parsing a link, a document's headings and anchors |
 | `src/core/claude.ts` | Starts `claude -p` and reads its stream |
 | `src/projects.ts` | Finds projects, loads them, refreshes on file changes |
-| `src/views/*.ts` | Spec Tree, Node, Changes and Node Types views |
+| `src/views/*.ts` | Spec Tree, Node, Changes and Node Types views, and the change state window |
 | `src/decorations.ts`, `src/diagnostics.ts`, `src/editing.ts`, `src/codelens.ts`, `src/statusbar.ts` | Badges, problems, completion and links, document lenses, status bar |
 | `src/commands.ts` | Node, change and context commands |
 | `src/agents.ts` | Agent runs of a change: starting, recording, approval, logs |

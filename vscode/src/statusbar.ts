@@ -1,4 +1,4 @@
-// Status bar: the active change and what is left, and the node of the active file.
+// Status bar: the active change and what is left (a click opens its state window), and the node of the active file.
 import * as vscode from 'vscode';
 import type { AgentManager } from './agents';
 import { showNode } from './core/paths';
@@ -16,7 +16,6 @@ export class StatusBar implements vscode.Disposable {
   ) {
     this.change.name = 'uspec change';
     this.node.name = 'uspec node';
-    this.change.command = 'workbench.view.extension.uspec';
     this.node.command = 'uspec.revealActiveFile';
     this.disposables = [
       this.change,
@@ -41,7 +40,8 @@ export class StatusBar implements vscode.Disposable {
       const waiting = this.agents.waiting(p, c.name);
       const extra = [running ? `${running} running` : '', waiting ? `${waiting} to approve` : ''].filter(Boolean);
       this.change.text = `${running ? '$(loading~spin)' : '$(git-pull-request-draft)'} ${c.name} · ${[summary(c), ...extra].join(' · ')}`;
-      this.change.tooltip = `uspec change ${c.name}${p.changes.length > 1 ? ` (${p.changes.length} open)` : ''}`;
+      this.change.tooltip = `uspec change ${c.name}${p.changes.length > 1 ? ` (${p.changes.length} open)` : ''} · click to open its state`;
+      this.change.command = { command: 'uspec.change.showState', title: 'Show State', arguments: [{ p, name: c.name }] };
       this.change.show();
     } else {
       this.change.hide();
