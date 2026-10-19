@@ -241,7 +241,20 @@ describe('uspec extension', () => {
       .readFileSync(process.env.FAKE_CLAUDE_LOG!, 'utf8')
       .trim()
       .split('\n')
-      .map((l) => JSON.parse(l) as { role: string; args: string[] });
+      .map((l) => JSON.parse(l) as { role: string; args: string[]; input: string });
+    if (process.env.USPEC_TEST_PROVIDER === 'codex') {
+      assert.ok(runs.every(r => r.provider === 'codex'));
+      assert.ok(runs.filter(r => r.sessionId).every(r => r.sessionId!.startsWith('fake-')));
+      for (const call of calls) {
+        assert.ok(call.args.includes('exec') && call.args.includes('--json'));
+        const readOnly = ['impact', 'triage', 'splitter', 'reviewer'].includes(call.role);
+        assert.strictEqual(call.args[call.args.indexOf('--sandbox') + 1], readOnly ? 'read-only' : 'workspace-write');
+        assert.ok(call.args.includes('approval_policy="never"'));
+        assert.ok(!call.args.includes('--model'), 'Claude model aliases must not reach Codex');
+        assert.match(call.input, /You run non-interactively/);
+      }
+      assert.ok(calls.some(c => c.args.includes('resume')), 'later writer uses the same Codex thread');
+    } else {
     const writer = calls.find((x) => x.role === 'writer' && x.args.includes('Edit(docs/system/services/payments/compliance.md)'))!;
     assert.ok(writer.args.includes('Edit(docs/system/services/payments/api.md)'));
     assert.ok(writer.args.includes('Edit(docs/system/services/payments/api-extra/**)'));
@@ -259,6 +272,8 @@ describe('uspec extension', () => {
     assert.ok(implementer.args.includes('Edit(services/payments/**)'));
     assert.ok(implementer.args.includes('Bash'));
     for (const role of ['impact', 'triage']) assert.ok(!calls.find((x) => x.role === role)!.args.some((a) => a.startsWith('Edit(')), role);
+
+    }
 
     // The run log has the input and the result.
     const log = (await vscode.workspace.openTextDocument(runs[0].logUri)).getText();
@@ -319,6 +334,7 @@ describe('uspec extension', () => {
 
   it('keeps writer reviews collapsed, opens native diffs and restores the same author session', async function () {
     this.timeout(60_000);
+    const originalProvider = vscode.workspace.getConfiguration('uspec').get<string>('agents.provider', 'claude');
     const c = 'review-recovery', key = 'system/services/payments/compliance.md';
     const target = file(`docs/${key}`), original = fs.readFileSync(target, 'utf8');
     const config = vscode.workspace.getConfiguration('uspec');
@@ -342,6 +358,7 @@ describe('uspec extension', () => {
       assert.ok(input instanceof vscode.TabInputTextDiff, 'opens the native diff editor');
       assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), original);
       const session = run.sessionId;
+      await config.update('agents.provider', originalProvider === 'codex' ? 'claude' : 'codex', vscode.ConfigurationTarget.Workspace);
       await api.agents.reviseWriter(run, [{ document: key, selected: true, comment: 'Explain the rule clearly' }]);
       assert.strictEqual(run.sessionId, session, 'revision resumes the writer session');
       assert.strictEqual(run.docs[0].snapshot, original, 'revision retains the original review base');
@@ -349,6 +366,7 @@ describe('uspec extension', () => {
       api.agents.restore();
       const restored = api.agents.runsOf(p, c).find(r => r.role === 'writer')!;
       assert.strictEqual(restored.sessionId, session);
+      assert.strictEqual(restored.provider, originalProvider, 'restore retains the author provider after settings change');
       assert.strictEqual(restored.state, 'needs-approval');
       assert.strictEqual((await vscode.workspace.openTextDocument(restored.docs[0].snapshotUri!)).getText(), original);
       await api.agents.approve(restored);
@@ -356,6 +374,7 @@ describe('uspec extension', () => {
       assert.strictEqual(p.change(c)?.docs.get(key)?.state, 'updated');
       panel.dispose();
     } finally {
+      await config.update('agents.provider', originalProvider, vscode.ConfigurationTarget.Workspace);
       await config.update('agents.approveWrites', 'never', vscode.ConfigurationTarget.Workspace);
       fs.writeFileSync(target, original);
       fs.rmSync(file(`.uspec/changes/${c}`), { recursive: true, force: true });

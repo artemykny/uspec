@@ -1,7 +1,7 @@
 {
   "name": "uspec",
   "displayName": "uspec",
-  "description": "Work with uspec spec trees: navigate nodes and links, see problems and drift, and orchestrate changes with Claude Code agents: find the starting documents, write the spec, plan and implement.",
+  "description": "Work with uspec spec trees: navigate nodes and links, see problems and drift, and orchestrate changes with Claude Code or Codex agents: find the starting documents, write the spec, plan and implement.",
   "version": "0.1.0",
   "publisher": "uspec",
   "private": true,
@@ -264,7 +264,7 @@
       },
       {
         "command": "uspec.agents.review",
-        "title": "Review with Claude",
+        "title": "Review with Agent",
         "category": "uspec"
       },
       {
@@ -299,7 +299,7 @@
       },
       {
         "command": "uspec.agents.openSession",
-        "title": "Open in Claude Code",
+        "title": "Open Agent Window",
         "category": "uspec",
         "icon": "$(terminal)"
       },
@@ -311,13 +311,13 @@
       },
       {
         "command": "uspec.claude.startChange",
-        "title": "Start Change in Claude Code…",
+        "title": "Start Change with Agent…",
         "category": "uspec",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "uspec.claude.continueChange",
-        "title": "Continue in Claude Code",
+        "title": "Continue with Agent",
         "category": "uspec"
       }
     ],
@@ -803,12 +803,12 @@
         "uspec.agents.model": {
           "type": "string",
           "default": "",
-          "description": "Model for impact, writer, planner, implementer and reviewer runs (an alias such as `opus` or a full model name). Empty uses Claude Code's default."
+          "description": "Claude Code model for runs other than triage. Empty uses the Claude Code default."
         },
         "uspec.agents.triageModel": {
           "type": "string",
           "default": "sonnet",
-          "description": "Model for triage runs, which only judge whether documents are affected and write nothing (an alias such as `sonnet` or a full model name). Empty uses Claude Code's default."
+          "description": "Claude Code model for triage runs. Empty uses the Claude Code default."
         },
         "uspec.agents.maxParallel": {
           "type": "number",
@@ -865,6 +865,35 @@
           "type": "boolean",
           "default": true,
           "description": "Flag lines of template guidance (`<…>`) left in spec documents."
+        },
+        "uspec.agents.provider": {
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex"
+          ],
+          "enumItemLabels": [
+            "Claude Code",
+            "Codex"
+          ],
+          "default": "claude",
+          "description": "Agent used for new runs and terminal sessions. Existing sessions keep their original agent.",
+          "order": 1
+        },
+        "uspec.codexPath": {
+          "type": "string",
+          "default": "",
+          "description": "Codex CLI executable. Empty uses codex on PATH."
+        },
+        "uspec.agents.codexModel": {
+          "type": "string",
+          "default": "",
+          "description": "Model for Codex runs other than triage. Empty uses the Codex CLI default."
+        },
+        "uspec.agents.codexTriageModel": {
+          "type": "string",
+          "default": "",
+          "description": "Model for Codex triage runs. Empty uses the Codex CLI default."
         }
       }
     }

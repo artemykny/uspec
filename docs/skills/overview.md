@@ -1,6 +1,6 @@
 # Skills
 
-The user works with uspec through skills for Claude Code for the parts that need a conversation: describing a change, agreeing on structure, resolving what an agent couldn't, reviewing the spec. They call the [CLI](../cli/overview.md) for everything mechanical. Running a change's agents, one per item, is not a skill's job: the [VS Code extension](../vscode/overview.md) orchestrates them, and the skills send the user there.
+The user works with uspec through skills for Claude Code or Codex for the parts that need a conversation: describing a change, agreeing on structure, resolving what an agent couldn't, reviewing the spec. They call the [CLI](../cli/overview.md) for everything mechanical. Running a change's agents, one per item, is not a skill's job: the [VS Code extension](../vscode/overview.md) orchestrates them, and the skills send the user there.
 
 ## Skills
 
@@ -33,7 +33,7 @@ The prompts of the agents that work on a change sit next to `uspec-spec`, the sk
 
 ## Install
 
-The skills call the `uspec` CLI, which must be on the `PATH`. Copy the skill directories into the project's `.claude/skills/`, or into `~/.claude/skills/` to use them in every project, or run **Install Skills** in VS Code:
+The skills call the `uspec` CLI, which must be on the `PATH`. Copy the skill directories into the project's `.claude/skills/`, or into `~/.claude/skills/` to use them in every project, or run **Install Skills** in VS Code. With Codex selected in `uspec.agents.provider`, use `.agents/skills/` instead; Install Skills chooses the directory for the selected provider:
 
 ```
 cp -r skills/uspec-* <project>/.claude/skills/

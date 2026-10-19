@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const args = process.argv.slice(2);
+const codex = args.includes('exec');
 const log = process.env.FAKE_CLAUDE_LOG;
 
 function emit(e: object): void {
@@ -11,6 +12,11 @@ function emit(e: object): void {
 }
 
 function finish(result: string, sessionId: string): void {
+  if (codex) {
+    emit({ type: 'item.completed', item: { type: 'agent_message', text: result } });
+    emit({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 20 } });
+    return;
+  }
   emit({ type: 'assistant', message: { content: [{ type: 'text', text: result }] }, session_id: sessionId });
   emit({ type: 'result', subtype: 'success', is_error: false, result, session_id: sessionId, num_turns: 1, total_cost_usd: 0.01, duration_ms: 20 });
 }
@@ -19,7 +25,7 @@ let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => (input += c));
 process.stdin.on('end', () => {
-  const sessionId = args.includes('--resume') ? args[args.indexOf('--resume') + 1] : `fake-${process.pid}`;
+  const sessionId = codex && args.includes('resume') ? args[args.indexOf('resume') + 1] : args.includes('--resume') ? args[args.indexOf('--resume') + 1] : `fake-${process.pid}`;
   const role = /splitter agent/.test(input) ? 'splitter' : /impact agent/.test(input)
     ? 'impact'
     : /triage agent/.test(input)
@@ -31,8 +37,9 @@ process.stdin.on('end', () => {
           : /implementer agent/.test(input)
             ? 'implementer'
             : 'reviewer';
-  if (log) fs.appendFileSync(log, JSON.stringify({ role, args }) + '\n');
-  emit({ type: 'system', subtype: 'init', session_id: sessionId, model: 'fake', permissionMode: 'default' });
+  if (log) fs.appendFileSync(log, JSON.stringify({ role, args, input }) + '\n');
+  if (codex) emit({ type: 'thread.started', thread_id: sessionId });
+  else emit({ type: 'system', subtype: 'init', session_id: sessionId, model: 'fake', permissionMode: 'default' });
 
   if (role === 'impact') {
     // The change starts at the refund rules, as change.md says; the tree is in the input.
@@ -93,7 +100,8 @@ process.stdin.on('end', () => {
     const results = docs.map((doc) => {
       const rules = doc.endsWith('refunds/rules.md') && fs.readFileSync(doc, 'utf8').includes('14 days');
       if (!rules && !/(logic|compliance|states)\.md$/.test(doc)) return `${doc}\nno change\nThe document doesn't mention the refund window.`;
-      emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.resolve(doc) } }] }, session_id: sessionId });
+      if (codex) emit({ type: 'item.completed', item: { type: 'file_change', changes: [{ path: doc, kind: 'update' }] } });
+      else emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.resolve(doc) } }] }, session_id: sessionId });
       if (rules) fs.writeFileSync(doc, fs.readFileSync(doc, 'utf8').replace('14 days', '30 days'));
       else fs.appendFileSync(doc, '\nRefunds can be requested within 30 days.\n');
       return `${doc}\nupdated\nThe refund window is 30 days.\nuser-visible: yes`;

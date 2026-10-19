@@ -1,12 +1,12 @@
-// Agent runs on a change: starting Claude Code per item, recording results with `uspec change set`,
+// Agent runs on a change: starting the selected agent per item, recording results with `uspec change set`,
 // approval of writer updates, logs (docs/vscode/overview.md#agents).
+import { type AgentProvider, providerLabel, executionArgs, resumeArgs, codexScope } from './core/provider';
 import * as fs from 'fs';
 import { createHash } from 'crypto';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
   agentPrompt,
-  claudeArgs,
   describeEvent,
   formatCost,
   formatDuration,
@@ -31,14 +31,14 @@ import {
   type WriterResult,
 } from './core/agents';
 import type { ClaudeResult } from './core/claude';
-import { startTerminalClaude, revealAgentTerminal } from './agentTerminal';
+import { startTerminalAgent, revealAgentTerminal } from './agentTerminal';
 import { fileProposal, readFileProposal, readSplit, type FileDecision, type SplitPlan } from './core/workflow';
 import type { NextJson, SetJson } from './core/model';
 import { isTemplateLeft } from './core/templates';
 import { join, nodeKey, showNode, splitDoc } from './core/paths';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
-import { claudeOrComplain, openClaude, promptFile, quote } from './terminal';
+import { agentOrComplain, openAgent, selectedProvider, promptFile, quote } from './terminal';
 
 export type RunState = 'running' | 'needs-approval' | 'recorded' | 'blocked' | 'gap' | 'failed' | 'error' | 'stopped' | 'rejected' | 'reviewed';
 
@@ -71,6 +71,7 @@ export class AgentRun {
   ended?: number;
   costUsd?: number;
   sessionId?: string;
+  provider: AgentProvider = 'claude';
   readonly log: string[] = [];
   logUri!: vscode.Uri;
   /** A writer's documents, in the order given, each with its own result. */
@@ -212,6 +213,7 @@ export class AgentManager implements vscode.Disposable {
 
   private newRun(p: Project, change: string | undefined, role: Role, item: string, label?: string): AgentRun {
     const run = new AgentRun(p, change, role, item, label);
+    run.provider = selectedProvider();
     run.logUri = this.content.register('run', String(run.id), `${run.title.replace(/[/\\:]/g, '_')}.log`, () => run.log.join('\n') + '\n');
     run.log.push(`# ${run.title}`, `project: ${p.root}${change ? ` · change: ${change}` : ''} · started ${new Date(run.started).toLocaleTimeString()}`, '');
     this.runs.push(run);
@@ -238,32 +240,31 @@ export class AgentManager implements vscode.Disposable {
     return run;
   }
 
-  /** Starts Claude Code with a role's prompt and input; returns its result, or undefined when the run ended without one. */
+  /** Starts the run’s provider with a role's prompt and input; returns its result, or undefined when the run ended without one. */
   private async execute(run: AgentRun, input: string, perms: Permissions, mode?: string): Promise<ClaudeResult | undefined> {
     const { skill, file } = PROMPTS[run.role];
-    const promptPath = promptFile(run.p, this.extensionPath, skill, file);
+    const promptPath = promptFile(run.p, this.extensionPath, skill, file, run.provider);
     if (!promptPath) {
       this.finish(run, 'error', `no prompt ${skill}/${file}`, 'Install the skills, or reinstall the extension.');
       return undefined;
     }
-    const claude = claudeOrComplain();
-    if (!claude) {
-      this.finish(run, 'error', 'Claude Code not found');
+    const executable = agentOrComplain(run.provider);
+    if (!executable) {
+      this.finish(run, 'error', `${providerLabel(run.provider)} not found`);
       return undefined;
     }
-    const prompt = agentPrompt(fs.readFileSync(promptPath, 'utf8'), input, mode);
+    const prompt = agentPrompt(fs.readFileSync(promptPath, 'utf8'), input, mode) + (run.provider === 'codex' ? codexScope(perms) : '');
     const model = modelFor(run.role, {
-      model: this.config().get<string>('agents.model', ''),
-      triageModel: this.config().get<string>('agents.triageModel', 'sonnet'),
+      model: this.config().get<string>(run.provider === 'codex' ? 'agents.codexModel' : 'agents.model', ''),
+      triageModel: this.config().get<string>(run.provider === 'codex' ? 'agents.codexTriageModel' : 'agents.triageModel', run.provider === 'codex' ? '' : 'sonnet'),
     });
-    const args = claudeArgs(perms, { model, name: `uspec ${run.title}` });
-    if (run.sessionId) args.push('--resume', run.sessionId);
+    const args = executionArgs(run.provider, perms, { model, name: `uspec ${run.title}`, sessionId: run.sessionId });
     this.append(
       run,
       `prompt: ${promptPath}`,
-      `model: ${model ?? "Claude Code's default"}`,
-      `tools: ${perms.tools.join(', ')}`,
-      `allowed: ${perms.allowed.join(' ')}`,
+      `model: ${model ?? `${providerLabel(run.provider)} default`}`,
+      `provider: ${providerLabel(run.provider)}`,
+      ...(run.provider === 'claude' ? [`tools: ${perms.tools.join(', ')}`, `allowed: ${perms.allowed.join(' ')}`] : [codexScope(perms).trim()]),
       '',
       '--- input',
       ...(mode ? [mode, ''] : []),
@@ -273,10 +274,11 @@ export class AgentManager implements vscode.Disposable {
     );
     run.queued = false;
     this.emitter.fire(run);
-    const proc = startTerminalClaude({
+    const proc = startTerminalAgent({
       name: `uspec · ${run.change ?? "review"} · ${run.title}`,
       terminal: run.terminal && !run.resumed && vscode.window.terminals.includes(run.terminal) ? run.terminal : undefined,
-      claudePath: claude,
+      executable,
+      provider: run.provider,
       cwd: run.p.root,
       args,
       prompt,
@@ -302,7 +304,7 @@ export class AgentManager implements vscode.Disposable {
       return undefined;
     }
     if (res.isError) {
-      const why = res.text || res.stderr.trim().split('\n').pop() || `claude exited with ${res.exitCode ?? res.signal}`;
+      const why = res.text || res.stderr.trim().split('\n').pop() || `${providerLabel(run.provider)} exited with ${res.exitCode ?? res.signal}`;
       this.finish(run, 'error', why.split('\n')[0].slice(0, 200), res.stderr.trim());
       return undefined;
     }
@@ -317,11 +319,11 @@ export class AgentManager implements vscode.Disposable {
     }
   }
 
-  /** Offers to resolve what a run couldn't with `uspec-spec` in Claude Code. */
+  /** Offers to resolve what a run couldn't with the run’s original agent. */
   private offerSession(run: AgentRun, message: string): void {
-    void vscode.window.showWarningMessage(message, 'Continue in Claude Code', 'Show Log').then((a) => {
+    void vscode.window.showWarningMessage(message, 'Continue with Agent', 'Show Log').then((a) => {
       if (a === 'Show Log') void this.showLog(run);
-      if (a === 'Continue in Claude Code') this.openSession(run);
+      if (a === 'Continue with Agent') this.openSession(run);
     });
   }
 
@@ -336,9 +338,9 @@ export class AgentManager implements vscode.Disposable {
         `${change}: change.md still has template guidance. The starting documents are found from it, so describe the change first.`,
         { modal: true },
         'Find Anyway',
-        'Write in Claude Code',
+        'Write with Agent',
       );
-      if (pick === 'Write in Claude Code') void vscode.commands.executeCommand('uspec.claude.continueChange', { p, name: change });
+      if (pick === 'Write with Agent') void vscode.commands.executeCommand('uspec.claude.continueChange', { p, name: change });
       if (pick !== 'Find Anyway') return undefined;
     }
     const run = this.newRun(p, change, 'impact', 'change', 'starting documents');
@@ -449,7 +451,7 @@ export class AgentManager implements vscode.Disposable {
     const label = `${showNode(node)} · ${documents.map((d) => `${splitDoc(d).doc}.md`).join(', ')}`;
     const previous = [...this.runsOf(p, change)].reverse().find(r => r.role === 'writer' && r.item === node);
     const run = this.newRun(p, change, 'writer', node, label);
-    if (previous && !previous.resumed) run.sessionId = previous.sessionId;
+    if (previous && !previous.resumed && previous.provider === run.provider) run.sessionId = previous.sessionId;
     run.docs = documents.map((key) => ({ key, state: 'running', outcome: '', detail: '', snapshot: '' }));
     return this.slotsFor(p, change).run(() =>
       this.guard(run, async () => {
@@ -964,11 +966,11 @@ export class AgentManager implements vscode.Disposable {
   openSession(run: AgentRun): void {
     if (run.terminal && vscode.window.terminals.includes(run.terminal)) {
       if (run.state !== 'running' && run.sessionId && !run.resumed) {
-        const claude = claudeOrComplain();
-        if (claude) { run.terminal.sendText((process.platform === 'win32' ? '& ' : '') + [claude, '--resume', run.sessionId, ...(run.proposal ? [`Continue reviewing ${run.proposal}. Apply agreed revisions to that Markdown document, preserving its review format.`] : [])].map(quote).join(' ')); run.resumed = true; }
+        const executable = agentOrComplain(run.provider);
+        if (executable) { run.terminal.sendText((process.platform === 'win32' ? '& ' : '') + [executable, ...resumeArgs(run.provider, run.sessionId), ...(run.proposal ? [`Continue reviewing ${run.proposal}. Apply agreed revisions to that Markdown document, preserving its review format.`] : [])].map(quote).join(' ')); run.resumed = true; }
       }
       void revealAgentTerminal(run.terminal);
-    } else if (run.sessionId) { run.terminal = openClaude(run.p, ['--resume', run.sessionId], `Claude Code · ${run.title}`); run.resumed = true; }
+    } else if (run.sessionId) { run.terminal = openAgent(run.p, resumeArgs(run.provider, run.sessionId), `${providerLabel(run.provider)} · ${run.title}`, run.provider); run.resumed = true; }
   }
 
   clearFinished(): void {
@@ -980,7 +982,7 @@ export class AgentManager implements vscode.Disposable {
     void this.approvals.update('uspec.reviews', this.runs.filter(r => r.change).map(r => ({
       root: r.p.root, change: r.change, created: r.p.change(r.change!)?.created, baseline: r.p.change(r.change!)?.baseline,
       started: r.started, ended: r.ended, role: r.role, item: r.item, state: r.state, outcome: r.outcome, detail: r.detail,
-      sessionId: r.sessionId, proposal: r.proposal, candidates: r.candidates, starting: r.starting,
+      provider: r.provider, sessionId: r.sessionId, proposal: r.proposal, candidates: r.candidates, starting: r.starting,
       plans: r.plans, nodes: r.nodes, planApprovals: r.planApprovals,
       docs: r.docs.map(({ record, snapshotUri, ...d }) => d),
     })));
@@ -993,7 +995,7 @@ export class AgentManager implements vscode.Disposable {
       if (!p || !p.change(data.change) || p.change(data.change)?.created !== data.created || p.change(data.change)?.baseline !== data.baseline) continue;
       const run = this.newRun(p, data.change, data.role, data.item);
       const { root, created, baseline, ...fields } = data;
-      Object.assign(run, fields);
+      Object.assign(run, fields, { provider: data.provider === 'codex' ? 'codex' : 'claude' });
       if (run.state === 'running') { run.state = 'stopped'; run.outcome = 'Interrupted by reload'; }
       for (const [i, d] of run.docs.entries()) {
         if (d.state === 'running') d.state = 'stopped';

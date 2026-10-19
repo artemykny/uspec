@@ -4,12 +4,13 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { StringDecoder } from 'string_decoder';
+import { eventAdapter, type AgentProvider } from './core/provider';
 import type { ClaudeResult, ClaudeRun } from './core/claude';
 
 const worker = String.raw`
 const fs = require('fs'), { spawn } = require('child_process');
 const c = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const child = spawn(c.claudePath, c.args, {cwd: c.cwd, stdio: ['pipe','pipe','inherit']});
+const child = spawn(c.executable, c.args, {cwd: c.cwd, stdio: ['pipe','pipe','inherit']});
 let buffer = '';
 const out = fs.createWriteStream(c.events);
 child.stdout.on('data', chunk => {
@@ -24,6 +25,8 @@ child.stdout.on('data', chunk => {
         else if(b.type === 'tool_use') console.log(b.name + ': ' + JSON.stringify(b.input));
       }
       if(e.type === 'result') console.log(e.result || e.subtype);
+      if(e.type === 'item.completed') console.log(e.item?.text || e.item?.command || JSON.stringify(e.item));
+      if(e.type === 'error' || e.type === 'turn.failed') console.error(e.message || e.error?.message || 'Codex turn failed');
     } catch { console.log(line); }
   }
 });
@@ -35,8 +38,8 @@ process.on('SIGTERM', () => { child.kill(); });
 process.on('SIGHUP', () => { child.kill(); });
 `;
 
-export function startTerminalClaude(opts: {
-  claudePath: string; cwd: string; args: string[]; prompt: string; name: string; terminal?: vscode.Terminal;
+export function startTerminalAgent(opts: {
+  executable: string; provider: AgentProvider; cwd: string; args: string[]; prompt: string; name: string; terminal?: vscode.Terminal;
   onEvent(e: any): void;
 }): ClaudeRun & { terminal: vscode.Terminal } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uspec-agent-'));
@@ -44,7 +47,7 @@ export function startTerminalClaude(opts: {
   const events = path.join(dir, 'events'), exit = path.join(dir, 'exit');
   const script = path.join(dir, 'worker.cjs'), config = path.join(dir, 'input.json');
   fs.writeFileSync(script, worker, { mode: 0o600 });
-  fs.writeFileSync(config, JSON.stringify({ claudePath: opts.claudePath, cwd: opts.cwd, args: opts.args, prompt: opts.prompt, events, exit }), { mode: 0o600 });
+  fs.writeFileSync(config, JSON.stringify({ executable: opts.executable, cwd: opts.cwd, args: opts.args, prompt: opts.prompt, events, exit }), { mode: 0o600 });
   const terminal = opts.terminal ?? vscode.window.createTerminal({
     name: opts.name, cwd: opts.cwd, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh',
     iconPath: new vscode.ThemeIcon('terminal'),
@@ -55,6 +58,7 @@ export function startTerminalClaude(opts: {
   const result: ClaudeResult = { text: '', isError: false, exitCode: null, signal: null, stderr: '' };
   let offset = 0, buffer = '', settled = false, sawResult = false;
   const decoder = new StringDecoder('utf8');
+  const adapt = eventAdapter(opts.provider);
   let resolve!: (r: ClaudeResult) => void;
   const done = new Promise<ClaudeResult>(r => resolve = r);
   const read = () => {
@@ -69,7 +73,8 @@ export function startTerminalClaude(opts: {
     while ((i = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, i); buffer = buffer.slice(i + 1);
       try {
-        const e = JSON.parse(line);
+        const e = adapt(JSON.parse(line));
+        if (e.type === 'error') result.stderr = e.message ?? e.error?.message ?? 'Agent error';
         if (e.session_id) result.sessionId = e.session_id;
         if (e.type === 'result') {
           sawResult = true;

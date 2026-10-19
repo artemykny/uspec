@@ -11,7 +11,7 @@ import { CONTEXT_GROUPS, type ContextJson, type NextJson, type SetJson } from '.
 import { baseName, docKey, join, nodeKey, showNode, splitDoc } from './core/paths';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
-import { ensureSkills, installSkills, openClaude } from './terminal';
+import { ensureSkills, installSkills, openAgent } from './terminal';
 import type { NodeViewProvider } from './views/nodeView';
 import { contextArgs } from './views/nodeView';
 import type { SpecEl, SpecTreeProvider } from './views/specTree';
@@ -480,7 +480,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     void vscode.window
       .showInformationMessage(
         `Describe ${name} in change.md: why, what changes rule by rule, and a worked example with real values. Then Run Agents finds the documents it starts at.`,
-        'Write in Claude Code',
+        'Write with Agent',
       )
       .then((a) => a && vscode.commands.executeCommand('uspec.claude.continueChange', { p, name }));
     const active = p.activeChange?.name;
@@ -734,22 +734,22 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
   });
   reg('uspec.agents.clearRuns', () => agents.clearFinished());
 
-  // --- Claude Code in a terminal -----------------------------------------------------------------
+  // --- Selected agent in a terminal -----------------------------------------------------------------
 
   reg('uspec.claude.startChange', async () => {
     const p = await pickProject();
     if (!p) return;
     const what = await vscode.window.showInputBox({
-      prompt: 'What should change, and why? Claude Code opens a change with /uspec-spec and writes change.md with you.',
+      prompt: 'What should change, and why? The selected agent opens a change using uspec-spec and writes change.md with you.',
       placeHolder: 'Refunds can be requested within 30 days instead of 14',
     });
     if (!what?.trim()) return;
-    if (await ensureSkills(p, s.extensionPath, ['uspec-spec'])) openClaude(p, [`/uspec-spec ${what.trim()}`]);
+    if (await ensureSkills(p, s.extensionPath, ['uspec-spec'])) openAgent(p, [`Use the uspec-spec skill. ${what.trim()}`]);
   });
 
   reg('uspec.claude.continueChange', async (arg?: any) => {
     const c = await changeRef(arg);
-    if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-spec']))) openClaude(c.p, [`/uspec-spec Continue the change ${c.name}.`], `Claude Code · ${c.name}`);
+    if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-spec']))) openAgent(c.p, [`Use the uspec-spec skill. Continue the change ${c.name}.`], `Agent · ${c.name}`);
   });
 
 

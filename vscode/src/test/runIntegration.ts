@@ -46,6 +46,7 @@ function settings(workspace: string, values: Record<string, unknown>): void {
 async function main(): Promise<void> {
   // USPEC_LIVE=1 runs live.test.ts with the real Claude Code instead of the fake: it costs money.
   const live = process.env.USPEC_LIVE === '1';
+  const provider = !live && process.env.USPEC_TEST_PROVIDER === 'codex' ? 'codex' : 'claude';
   const ext = path.resolve(__dirname, '..', '..');
   const repo = path.resolve(ext, '..');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uspec-vscode-'));
@@ -72,11 +73,11 @@ async function main(): Promise<void> {
       fs.writeFileSync(claude, `#!/bin/sh\nexec "${process.execPath}" "${path.join(ext, 'out', 'test', 'fixtures', 'fakeClaude.js')}" "$@"\n`);
       fs.chmodSync(claude, 0o755);
     }
-    settings(work, { 'uspec.cliPath': cli, 'uspec.claudePath': claude, 'uspec.agents.approveWrites': 'never' });
+    settings(work, { 'uspec.cliPath': cli, 'uspec.claudePath': claude, 'uspec.codexPath': claude, 'uspec.agents.provider': provider, 'uspec.agents.approveWrites': 'never' });
     git(work, 'init', '-q');
     git(work, 'add', '-A');
     git(work, 'commit', '-qm', 'init');
-    await suite(live ? 'live' : 'flow', ext, work, { FAKE_CLAUDE_LOG: path.join(tmp, 'claude.log') });
+    await suite(live ? 'live' : 'flow', ext, work, { FAKE_CLAUDE_LOG: path.join(tmp, 'claude.log'), USPEC_TEST_PROVIDER: provider });
     if (live) return;
 
     // This repository: its own spec tree with the example product nested in it.

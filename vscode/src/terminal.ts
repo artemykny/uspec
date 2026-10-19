@@ -1,10 +1,11 @@
-// Claude Code in a terminal for work that needs a conversation, and installing the skills
+// The selected agent in a terminal for work that needs a conversation, and installing the skills
 // (docs/vscode/overview.md#agents).
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { revealAgentTerminal } from './agentTerminal';
+import { type AgentProvider, providerLabel } from './core/provider';
 import { onPath } from './core/cli';
 import type { Project } from './projects';
 
@@ -29,34 +30,41 @@ export function findClaude(): string | undefined {
   return undefined;
 }
 
-export function claudeOrComplain(): string | undefined {
-  const c = findClaude();
-  if (!c) {
-    void vscode.window
-      .showErrorMessage('Claude Code wasn’t found. Install it, or set uspec.claudePath.', 'Open Settings')
-      .then((a) => a && vscode.commands.executeCommand('workbench.action.openSettings', 'uspec.claudePath'));
-  }
-  return c;
+export function selectedProvider(): AgentProvider {
+  return vscode.workspace.getConfiguration('uspec').get<string>('agents.provider') === 'codex' ? 'codex' : 'claude';
 }
+
+export function agentOrComplain(provider = selectedProvider()): string | undefined {
+  const setting = vscode.workspace.getConfiguration('uspec').get<string>('codexPath', '').trim();
+  const executable = provider === 'claude' ? findClaude() : setting ? (setting.startsWith('~') ? path.join(os.homedir(), setting.slice(1)) : setting) : onPath('codex');
+  if (!executable) {
+    const key = `uspec.${provider}Path`;
+    void vscode.window.showErrorMessage(`${providerLabel(provider)} wasn’t found. Install it, or set ${key}.`, 'Open Settings')
+      .then(a => a && vscode.commands.executeCommand('workbench.action.openSettings', key));
+  }
+  return executable;
+}
+
+const skillFolder = (provider = selectedProvider()) => provider === 'codex' ? '.agents' : '.claude';
 
 export function quote(s: string): string {
   if (process.platform === 'win32') return `'${s.replace(/'/g, "''")}'`;
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-/** Opens a terminal in the project root running `claude <args>`. */
-export function openClaude(p: Project, args: string[], name = 'Claude Code · uspec'): vscode.Terminal | undefined {
-  const claude = claudeOrComplain();
-  if (!claude) return;
-  const term = vscode.window.createTerminal({ name, cwd: p.root, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh', iconPath: new vscode.ThemeIcon('sparkle') });
+/** Opens a terminal in the project root running the selected CLI. */
+export function openAgent(p: Project, args: string[], name?: string, provider = selectedProvider()): vscode.Terminal | undefined {
+  const executable = agentOrComplain(provider);
+  if (!executable) return;
+  const term = vscode.window.createTerminal({ name: name ?? `${providerLabel(provider)} · uspec`, cwd: p.root, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh', iconPath: new vscode.ThemeIcon('sparkle') });
   void revealAgentTerminal(term);
-  term.sendText((process.platform === 'win32' ? '& ' : '') + [claude, ...args].map(quote).join(' '));
+  term.sendText((process.platform === 'win32' ? '& ' : '') + [executable, ...args].map(quote).join(' '));
   return term;
 }
 
 /** Where a skill is installed for a project, if anywhere. */
 export function installedSkill(p: Project, skill: string): string | undefined {
-  return [path.join(p.root, '.claude', 'skills', skill), path.join(os.homedir(), '.claude', 'skills', skill)].find((d) =>
+  return [path.join(p.root, skillFolder(), 'skills', skill), path.join(os.homedir(), skillFolder(), 'skills', skill)].find((d) =>
     fs.existsSync(path.join(d, 'SKILL.md')),
   );
 }
@@ -66,7 +74,7 @@ export async function ensureSkills(p: Project, extensionPath: string, skills: st
   const missing = skills.filter((s) => !installedSkill(p, s));
   if (!missing.length) return true;
   const pick = await vscode.window.showWarningMessage(
-    `${missing.join(', ')} ${missing.length > 1 ? 'aren’t' : 'isn’t'} installed for ${p.name}. Claude Code needs the skills to run it.`,
+    `${missing.join(', ')} ${missing.length > 1 ? 'aren’t' : 'isn’t'} installed for ${p.name}. ${providerLabel(selectedProvider())} needs the skills to run it.`,
     'Install Skills',
     'Run Anyway',
   );
@@ -74,10 +82,10 @@ export async function ensureSkills(p: Project, extensionPath: string, skills: st
   return pick === 'Run Anyway';
 }
 
-/** Copies the bundled skills into the project's `.claude/skills/`. */
+/** Copies bundled skills into the selected provider’s project skill directory. */
 export async function installSkills(p: Project, extensionPath: string): Promise<boolean> {
   const from = path.join(extensionPath, 'skills');
-  const to = path.join(p.root, '.claude', 'skills');
+  const to = path.join(p.root, skillFolder(), 'skills');
   const existing = SKILLS.filter((s) => fs.existsSync(path.join(to, s)));
   if (existing.length) {
     const ok = await vscode.window.showWarningMessage(
@@ -100,10 +108,10 @@ export async function installSkills(p: Project, extensionPath: string): Promise<
 }
 
 /** The prompt file of a subagent: the project's skills, the user's, then the bundled copy. */
-export function promptFile(p: Project, extensionPath: string, skill: string, file: string): string | undefined {
+export function promptFile(p: Project, extensionPath: string, skill: string, file: string, provider = selectedProvider()): string | undefined {
   return [
-    path.join(p.root, '.claude', 'skills', skill, file),
-    path.join(os.homedir(), '.claude', 'skills', skill, file),
+    path.join(p.root, skillFolder(provider), 'skills', skill, file),
+    path.join(os.homedir(), skillFolder(provider), 'skills', skill, file),
     path.join(extensionPath, 'skills', skill, file),
   ].find((f) => fs.existsSync(f));
 }
