@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import type { AgentManager, AgentRun } from './agents';
 import { writerDocs } from './core/agents';
 import { runJson, UspecError } from './core/cli';
+import { sectionLine, sectionText } from './core/links';
 import { CONTEXT_GROUPS, type ContextJson, type NextJson, type SetJson } from './core/model';
 import { baseName, docKey, join, nodeKey, showNode, splitDoc } from './core/paths';
 import type { ContentProvider } from './content';
@@ -260,6 +261,15 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     else await open(uri);
   });
 
+  // Opens a document, at a section's heading when one is given.
+  reg('uspec.openSection', async (root: string, rel: string, section?: string) => {
+    const uri = vscode.Uri.file(path.join(root, ...rel.split('/')));
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const line = section ? sectionLine(doc.getText(), section) : undefined;
+    const at = new vscode.Position(line ?? 0, 0);
+    await vscode.window.showTextDocument(doc, { preview: false, selection: new vscode.Range(at, at) });
+  });
+
   reg('uspec.diffFile', async (root: string, rel: string, baseline: string) => {
     const file = vscode.Uri.file(path.join(root, ...rel.split('/')));
     await vscode.commands.executeCommand('vscode.diff', content.atRevision(root, baseline, rel), file, `${path.basename(rel)} (${baseline.slice(0, 7)} ↔ now)`);
@@ -437,6 +447,9 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
           parts.push(`===== git diff ${json.baseline.slice(0, 7)} -- ${f.path} =====`, await gitDiff(p.root, json.baseline, f.path), '');
         } else if (f.path.endsWith('/')) {
           for (const file of listFiles(p.abs(f.path))) parts.push(`===== ${p.rel(file)} =====`, (await readText(file)) ?? '', '');
+        } else if (f.section) {
+          const text = (await readText(p.abs(f.path))) ?? '';
+          parts.push(`===== ${f.path}#${f.section} =====`, sectionText(text, f.section) ?? '(missing section)', '');
         } else {
           parts.push(`===== ${f.path} =====`, (await readText(p.abs(f.path))) ?? '(missing)', '');
         }
@@ -460,11 +473,14 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     if (!name) return;
     await manager.mutate(p, ['change', 'new', name]);
     const md = p.uriOf(`.uspec/changes/${name}/change.md`);
-    if (((await readText(md.fsPath)) ?? '').trim() === '') {
-      await fs.promises.writeFile(md.fsPath, `# <Title>\n\nStarts at: <node path>\n\n<What changes and why, in a few sentences. Include the constraints.>\n`);
-    }
     await manager.load(p);
     await open(md);
+    void vscode.window
+      .showInformationMessage(
+        `Describe ${name} in change.md: why, what changes rule by rule, and a worked example with real values. Then Run Agents finds the documents it starts at.`,
+        'Write in Claude Code',
+      )
+      .then((a) => a && vscode.commands.executeCommand('uspec.claude.continueChange', { p, name }));
     const active = p.activeChange?.name;
     if (active && active !== name) void vscode.window.showInformationMessage(`${name} is open. Changes are processed oldest first, so ${active} stays active until it closes.`);
   });
@@ -560,6 +576,8 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     await manager.mutate(d.p, ['change', 'set', name, key, state, '--reason', reason.trim()]);
   };
   reg('uspec.change.markAffected', (arg?: any) => decide(arg, 'affected'));
+  // A document not in the change becomes a starting document: affected, reached via change.md.
+  reg('uspec.change.addDocument', (arg?: any) => decide(arg, 'affected'));
   reg('uspec.change.markNoChange', (arg?: any) => decide(arg, 'no-change'));
 
   reg('uspec.change.markDone', async (arg?: any) => {
@@ -630,16 +648,52 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     await agents.runWriter(d.p, name, w.node, docs);
   });
 
-  reg('uspec.agents.runImplementer', async (arg?: any) => {
-    const n = await nodeRef(arg);
-    if (!n) return;
-    const name = changeFor(n.p, arg);
-    if (!name) return;
-    const next = await manager.json<NextJson>(n.p, ['change', 'next', name]);
-    if (!next.implement.some((i) => nodeKey(i.node) === n.node)) {
-      if (!(await confirmNotReady(showNode(n.node), 'documents of the change are unsettled, or a node it links to isn’t done.'))) return;
+  reg('uspec.agents.runImpact', async (arg?: any) => {
+    const c = await changeRef(arg);
+    if (!c) return;
+    if (c.p.change(c.name)?.docs.size) {
+      void vscode.window.showInformationMessage(`${c.name} already has documents: the starting documents are found once, before any.`);
+      return;
     }
-    await agents.runImplementer(n.p, name, n.node);
+    await agents.runImpact(c.p, c.name);
+  });
+
+  reg('uspec.agents.runPlanner', async (arg?: any) => {
+    const c = await changeRef(arg);
+    if (c) await agents.runPlanner(c.p, c.name);
+  });
+
+  /** The plan a plan command works on: the one in the argument, else one picked from the active change. */
+  const planRef = async (arg: any): Promise<{ p: Project; name: string; plan: string } | undefined> => {
+    if (arg?.p && typeof arg.name === 'string' && typeof arg.plan === 'string') return { p: arg.p, name: arg.name, plan: arg.plan };
+    const c = await changeRef(arg);
+    if (!c) return undefined;
+    const plans = c.p.change(c.name)?.plans.filter((x) => x.state === 'pending') ?? [];
+    if (!plans.length) {
+      void vscode.window.showInformationMessage(`${c.name} has no plan to implement.`);
+      return undefined;
+    }
+    const pick = await vscode.window.showQuickPick(
+      plans.map((x) => ({ label: x.plan, description: x.nodes.join(', '), plan: x.plan })),
+      { placeHolder: `Plan of ${c.name}` },
+    );
+    return pick ? { ...c, plan: pick.plan } : undefined;
+  };
+
+  reg('uspec.agents.runImplementer', async (arg?: any) => {
+    const pl = await planRef(arg);
+    if (!pl) return;
+    const next = await manager.json<NextJson>(pl.p, ['change', 'next', pl.name]);
+    if (!next.implement.some((i) => i.plan === pl.plan)) {
+      if (!(await confirmNotReady(`Plan ${pl.plan}`, 'documents of the change are unsettled, a node isn’t planned, the plans have errors, or it waits for another plan.'))) return;
+    }
+    await agents.runImplementer(pl.p, pl.name, pl.plan);
+  });
+
+  reg('uspec.change.openPlan', async (arg?: any) => {
+    const pl = await planRef(arg);
+    const path = pl && pl.p.change(pl.name)?.plans.find((x) => x.plan === pl.plan)?.path;
+    if (pl && path) await open(pl.p.uriOf(path));
   });
 
   reg('uspec.agents.review', async (arg?: any) => {
@@ -679,7 +733,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     const p = await pickProject();
     if (!p) return;
     const what = await vscode.window.showInputBox({
-      prompt: 'What should change, and why? Claude Code opens a change with /uspec-spec and works it out with you.',
+      prompt: 'What should change, and why? Claude Code opens a change with /uspec-spec and writes change.md with you.',
       placeHolder: 'Refunds can be requested within 30 days instead of 14',
     });
     if (!what?.trim()) return;
@@ -691,10 +745,6 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-spec']))) openClaude(c.p, [`/uspec-spec Continue the change ${c.name}.`], `Claude Code · ${c.name}`);
   });
 
-  reg('uspec.claude.implementChange', async (arg?: any) => {
-    const c = await changeRef(arg);
-    if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-implement']))) openClaude(c.p, [`/uspec-implement ${c.name}`], `Claude Code · ${c.name}`);
-  });
 
 }
 

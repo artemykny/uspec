@@ -6,6 +6,7 @@ export interface TreeNodeJson {
   type: string | null;
   depth: number;
   documents: string[];
+  /** The links as written: a node, or a document or section of one. */
   derives_from: string[];
   code: string[];
 }
@@ -77,27 +78,44 @@ export interface StatusDocJson {
   via: string[];
 }
 
+export interface PlanJson {
+  plan: string;
+  path: string;
+  nodes: string[];
+  after: string[];
+  state: 'pending' | 'done';
+}
+
 export interface StatusJson {
   change: string;
   baseline: string;
   documents: StatusDocJson[];
   implementation: { node: string; state: 'pending' | 'done' }[];
+  plans: PlanJson[];
 }
 
 export interface NextJson {
   change: string;
   baseline: string;
+  /** The impact step is due: the change has no documents yet. */
+  impact: null | { read: { path: string }[] };
   triage: null | {
     read: { path: string; document?: string; diff_since?: string }[];
     batch: { document: string; path: string; via: string[] }[];
   };
   /** By node: one entry per node with its ready `affected` documents, one writer each. */
   write: { node: string; documents: { document: string; path: string }[] }[];
-  implement: { node: string }[];
+  /** Nodes to implement that no plan holds yet, once every document is settled. */
+  plan: null | { dir: string; nodes: string[] };
+  plan_errors: { plan: string | null; message: string }[];
+  /** Plans ready to implement: one implementer each. */
+  implement: { plan: string; path: string; nodes: string[] }[];
 }
 
 export interface ContextFileJson {
   path: string;
+  /** The anchor of the one section of the document that is read. */
+  section: string | null;
   note: string | null;
 }
 

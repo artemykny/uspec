@@ -12,6 +12,7 @@ import type {
   Issue,
   NextJson,
   NodeTypeJson,
+  PlanJson,
   StatusDocJson,
   StatusJson,
   TreeJson,
@@ -32,6 +33,7 @@ import {
   specToProject,
   type SpecFile,
 } from './core/paths';
+import { parseLink, type Link } from './core/links';
 import { isUnwritten, splitFrontmatter } from './core/templates';
 
 export interface NodeInfo {
@@ -40,8 +42,10 @@ export interface NodeInfo {
   type: string | null;
   /** Documents present, in the type's order. */
   documents: string[];
-  /** Upstream nodes. */
+  /** Upstream nodes, each once. */
   links: string[];
+  /** The links as written, parsed; a link that can't be parsed is left out (validate reports it). */
+  deps: Link[];
   code: string[];
   parent?: string;
   children: string[];
@@ -59,6 +63,7 @@ export interface ChangeData {
   error?: string;
   docs: Map<string, StatusDocJson>;
   impl: Map<string, 'pending' | 'done'>;
+  plans: PlanJson[];
 }
 
 /** What a file is to a project: a part of the spec, or code under a node's code paths. */
@@ -395,11 +400,13 @@ export class ProjectManager implements vscode.Disposable {
     p.nodes = new Map();
     for (const n of tree.nodes) {
       const key = nodeKey(n.node);
+      const deps = n.derives_from.map(parseLink).filter((l): l is Link => l !== undefined);
       p.nodes.set(key, {
         path: key,
         type: n.type,
         documents: n.documents,
-        links: n.derives_from.map(nodeKey),
+        links: [...new Set(deps.map((l) => l.node))],
+        deps,
         code: n.code,
         parent: parentOf(key),
         children: [],
@@ -415,7 +422,7 @@ export class ProjectManager implements vscode.Disposable {
 
     p.changes = await Promise.all(
       list.changes.map(async (c) => {
-        const data: ChangeData = { name: c.change, baseline: c.baseline, created: c.created, counts: c.counts, docs: new Map(), impl: new Map() };
+        const data: ChangeData = { name: c.change, baseline: c.baseline, created: c.created, counts: c.counts, docs: new Map(), impl: new Map(), plans: [] };
         try {
           const [status, next] = await Promise.all([
             this.json<StatusJson>(p, ['change', 'status', c.change]),
@@ -425,6 +432,7 @@ export class ProjectManager implements vscode.Disposable {
           data.next = next;
           data.docs = new Map(status.documents.map((d) => [d.document, d]));
           data.impl = new Map(status.implementation.map((i) => [nodeKey(i.node), i.state]));
+          data.plans = status.plans ?? [];
         } catch (e) {
           data.error = e instanceof Error ? e.message : String(e);
         }

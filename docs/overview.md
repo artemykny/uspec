@@ -19,8 +19,8 @@ The first release contains:
 
 - **The method**: how a product is split into a spec tree, and how a change moves through it to the code.
 - **A CLI** (similar in spirit to OpenSpec) that scaffolds, validates and navigates the spec and tracks changes.
-- **Skills for Claude Code and Codex** that write the spec, implement nodes from it, review it, and turn experiments into spec changes.
-- **A VS Code extension** that shows the tree, its problems and its changes, and runs the skills' agents on a change from the editor.
+- **Skills for Claude Code and Codex** that describe a change with the user, review the spec, and turn experiments into spec changes.
+- **A VS Code extension** that shows the tree, its problems and its changes, and orchestrates a change: it runs the agents that find, triage and write the documents, plan the code and implement the plans.
 - **Presets**: ready-made node types to start a project from, including a minimal one for small apps.
 
 Out of scope for the first release:

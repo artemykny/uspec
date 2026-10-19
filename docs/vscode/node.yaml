@@ -16,7 +16,6 @@ derives_from:
   - cli/change
   - cli/drift
   - skills/uspec-spec
-  - skills/uspec-implement
   - skills/uspec-review
 code:
   - vscode/

@@ -10,7 +10,9 @@ use serde_json::{json, Value};
 
 use crate::git;
 use crate::graph::Graph;
+use crate::plans::Plans;
 use crate::project::{show_node, Project};
+use crate::sections;
 use crate::tree::{split_doc, Tree};
 use crate::types::Types;
 use crate::{columns, validate, Out};
@@ -203,6 +205,26 @@ fn list_names(project: &Project) -> Result<Vec<String>> {
     Ok(out)
 }
 
+/// The starting content of `change.md` (docs/cli/change/usage.md).
+pub const CHANGE_TEMPLATE: &str = "# <Title: the change in a few words>
+
+## Why
+
+<The problem, and who has it.>
+
+## What changes
+
+<The new behaviour, rule by rule: every case it touches, and what stays as it is. The constraints that apply.>
+
+## Worked example
+
+<One or more concrete scenarios, step by step, with real values: what the user does, what the product does, what it shows and stores. Before and after, where behaviour changes.>
+
+## Out of scope
+
+<What this change doesn't do.>
+";
+
 fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -217,7 +239,7 @@ pub fn cmd_new(project: &Project, name: &str, out: &Out) -> Result<()> {
     }
     let baseline = git::head(&project.root)?;
     fs::create_dir_all(&dir)?;
-    fs::write(dir.join("change.md"), "")?;
+    fs::write(dir.join("change.md"), CHANGE_TEMPLATE)?;
     let change = Change {
         name: name.to_string(),
         dir: dir.clone(),
@@ -228,7 +250,7 @@ pub fn cmd_new(project: &Project, name: &str, out: &Out) -> Result<()> {
         return out.print(json!({ "change": name, "path": project.rel(&dir), "baseline": baseline }));
     }
     println!("Created {}/", project.rel(&dir));
-    println!("  change.md     empty");
+    println!("  change.md     template");
     println!("  status.yaml   baseline {}", git::short(&baseline));
     Ok(())
 }
@@ -272,9 +294,11 @@ pub fn cmd_list(project: &Project, out: &Out) -> Result<()> {
     Ok(())
 }
 
-pub fn cmd_status(project: &Project, name: &str, out: &Out) -> Result<()> {
+pub fn cmd_status(project: &Project, tree: &Tree, name: &str, out: &Out) -> Result<()> {
     let c = Change::load(project, name)?;
     let s = &c.status;
+    let plans = Plans::load(project, &c, tree);
+    let plan_state = |p: &crate::plans::Plan| if plans.done(p, &c) { "done" } else { "pending" };
     if out.json {
         let docs: Vec<Value> = s
             .documents
@@ -286,7 +310,12 @@ pub fn cmd_status(project: &Project, name: &str, out: &Out) -> Result<()> {
             .iter()
             .map(|(k, d)| json!({ "node": k, "state": if *d { "done" } else { "pending" } }))
             .collect();
-        return out.print(json!({ "change": name, "baseline": s.baseline, "documents": docs, "implementation": imp }));
+        let pl: Vec<Value> = plans
+            .plans
+            .iter()
+            .map(|p| json!({ "plan": p.id, "path": p.path, "nodes": p.nodes, "after": p.after, "state": plan_state(p) }))
+            .collect();
+        return out.print(json!({ "change": name, "baseline": s.baseline, "documents": docs, "implementation": imp, "plans": pl }));
     }
     println!("change:    {name}");
     println!("baseline:  {}", git::short(&s.baseline));
@@ -308,22 +337,37 @@ pub fn cmd_status(project: &Project, name: &str, out: &Out) -> Result<()> {
     let rows: Vec<(String, String)> =
         s.implementation.iter().map(|(k, d)| (k.clone(), (if *d { "done" } else { "pending" }).to_string())).collect();
     print!("{}", columns(&rows, "  "));
+    println!("plans:{}", if plans.plans.is_empty() { "  none" } else { "" });
+    let rows: Vec<(String, String)> = plans
+        .plans
+        .iter()
+        .map(|p| {
+            let after = if p.after.is_empty() { String::new() } else { format!("; after {}", p.after.join(", ")) };
+            (p.id.clone(), format!("{}  {}{after}", plan_state(p), p.nodes.join(", ")))
+        })
+        .collect();
+    print!("{}", columns(&rows, "  "));
     Ok(())
 }
 
 /// What can be done now in a change.
 pub struct Next {
+    /// The impact step is due: the change has no documents and nothing to implement.
+    pub impact: bool,
     /// Updated documents whose diffs the triage batch reads.
     pub diffs: Vec<String>,
     /// Pending candidates ready for triage, with the rules that reached them.
     pub batch: Vec<(String, Vec<String>)>,
     /// Affected documents ready to be written, by node: one writer per entry.
     pub write: Vec<(String, Vec<String>)>,
-    /// Nodes ready to be implemented.
-    pub implement: Vec<String>,
+    /// Nodes to implement that no plan holds, once every document is settled.
+    pub plan: Vec<String>,
+    /// Plans ready to be implemented: id, path, nodes.
+    pub implement: Vec<(String, String, Vec<String>)>,
+    pub plans: Plans,
 }
 
-pub fn compute_next(change: &Change, tree: &Tree, types: &Types) -> Next {
+pub fn compute_next(project: &Project, change: &Change, tree: &Tree, types: &Types) -> Next {
     let g = Graph::new(tree, types);
     let docs = &change.status.documents;
     let unsettled: Vec<&String> = docs.iter().filter(|(_, d)| !d.state.settled()).map(|(k, _)| k).collect();
@@ -352,28 +396,22 @@ pub fn compute_next(change: &Change, tree: &Tree, types: &Types) -> Next {
     } else {
         change.updated().into_iter().filter(|u| g.reach(u).iter().any(|r| batch_keys.contains(r))).cloned().collect()
     };
+    let plans = Plans::load(project, change, tree);
+    let mut plan = vec![];
     let mut implement = vec![];
     if unsettled.is_empty() {
-        let imp = &change.status.implementation;
-        for (node, done) in imp {
-            if *done {
-                continue;
-            }
-            let path = if node == "." { "" } else { node.as_str() };
-            let links_done = tree.get(path).is_none_or(|n| {
-                n.links.iter().all(|l| imp.get(show_node(l)).is_none_or(|d| *d))
-            });
-            if links_done {
-                implement.push(node.clone());
-            }
+        plan = plans.unplanned(change);
+        if plan.is_empty() && plans.errors.is_empty() {
+            implement = plans.ready(change, tree).into_iter().map(|p| (p.id.clone(), p.path.clone(), p.nodes.clone())).collect();
         }
     }
-    Next { diffs, batch, write, implement }
+    let impact = docs.is_empty() && change.status.implementation.is_empty();
+    Next { impact, diffs, batch, write, plan, implement, plans }
 }
 
 pub fn cmd_next(project: &Project, types: &Types, tree: &Tree, name: &str, out: &Out) -> Result<()> {
     let c = Change::load(project, name)?;
-    let n = compute_next(&c, tree, types);
+    let n = compute_next(project, &c, tree, types);
     let base = git::short(&c.status.baseline);
     if out.json {
         let read: Vec<Value> = std::iter::once(json!({ "path": c.change_md(project) }))
@@ -387,16 +425,28 @@ pub fn cmd_next(project: &Project, types: &Types, tree: &Tree, name: &str, out: 
                 "batch": n.batch.iter().map(|(k, via)| json!({ "document": k, "path": project.spec_file(k), "via": via })).collect::<Vec<_>>(),
             })
         };
+        let impact = if n.impact { json!({ "read": [{ "path": c.change_md(project) }] }) } else { Value::Null };
+        let plan = if n.plan.is_empty() { Value::Null } else { json!({ "dir": n.plans.dir, "nodes": n.plan }) };
         return out.print(json!({
             "change": name,
             "baseline": c.status.baseline,
+            "impact": impact,
             "triage": triage,
             "write": n.write.iter().map(|(node, docs)| json!({
                 "node": node,
                 "documents": docs.iter().map(|k| json!({ "document": k, "path": project.spec_file(k) })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
-            "implement": n.implement.iter().map(|k| json!({ "node": k })).collect::<Vec<_>>(),
+            "plan": plan,
+            "plan_errors": n.plans.errors.iter().map(|e| json!({ "plan": e.plan, "message": e.message })).collect::<Vec<_>>(),
+            "implement": n.implement.iter().map(|(id, path, nodes)| json!({ "plan": id, "path": path, "nodes": nodes })).collect::<Vec<_>>(),
         }));
+    }
+    if n.impact {
+        println!("impact:");
+        println!("  read:");
+        println!("    {}", c.change_md(project));
+    } else {
+        println!("impact:     none");
     }
     if n.batch.is_empty() {
         println!("triage:     none");
@@ -421,12 +471,36 @@ pub fn cmd_next(project: &Project, types: &Types, tree: &Tree, name: &str, out: 
             }
         }
     }
+    if n.plan.is_empty() {
+        println!("plan:       none");
+    } else {
+        println!("plan:");
+        println!("  in: {}", n.plans.dir);
+        println!("  nodes:");
+        for k in &n.plan {
+            println!("    {k}");
+        }
+    }
     if n.implement.is_empty() {
         println!("implement:  none");
     } else {
         println!("implement:");
-        for k in &n.implement {
-            println!("  {k}");
+        let rows: Vec<(String, String)> = n.implement.iter().map(|(id, path, _)| (id.clone(), path.clone())).collect();
+        let lines = columns(&rows, "  ");
+        for ((_, _, nodes), line) in n.implement.iter().zip(lines.lines()) {
+            println!("{line}");
+            for k in nodes {
+                println!("    {k}");
+            }
+        }
+    }
+    if !n.plans.errors.is_empty() {
+        println!("plan errors:");
+        for e in &n.plans.errors {
+            match &e.plan {
+                Some(p) => println!("  {p}: {}", e.message),
+                None => println!("  {}", e.message),
+            }
         }
     }
     Ok(())
@@ -474,15 +548,15 @@ pub fn cmd_set(
             if reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
                 bail!("`{state}` needs --reason");
             }
-            let allowed = match new_state {
-                DocState::Affected => current == Some(DocState::Pending) || current == Some(DocState::Affected),
-                _ => current == Some(DocState::Pending) || current == Some(DocState::Affected),
-            };
-            if !allowed {
+            let open = current == Some(DocState::Pending) || current == Some(DocState::Affected);
+            let starting = new_state == DocState::Affected && current.is_none();
+            if !open && !starting {
                 let cur = current.map_or("not in the change", |s| s.as_str());
-                bail!("{key} is {cur}; only a pending or affected document can be set to {state}");
+                let allowed = if new_state == DocState::Affected { "a pending or affected document, or one not yet in the change," } else { "a pending or affected document" };
+                bail!("{key} is {cur}; only {allowed} can be set to {state}");
             }
-            let e = c.status.documents.get_mut(&key).unwrap();
+            // A document set to affected that wasn't in the change is a starting document.
+            let e = c.status.documents.entry(key.clone()).or_insert(DocEntry { state: new_state, reason: None, via: vec!["change.md".into()] });
             e.state = new_state;
             e.reason = reason;
             c.save()?;
@@ -497,7 +571,14 @@ pub fn cmd_set(
             entry.state = DocState::Updated;
             let g = Graph::new(tree, types);
             let mut added: Vec<(String, String, bool)> = vec![];
-            for (target, via) in g.direct(&key) {
+            // A section changed when its text differs from the baseline's, or it exists in only one of them.
+            let before = git::show(&project.root, &c.status.baseline, &project.spec_file(&key));
+            let now = tree.read_doc(project, &key);
+            let changed = |_: &str, anchor: &str| {
+                let sec = |t: &Option<String>| t.as_deref().and_then(|t| sections::section(t, anchor));
+                sec(&before) != sec(&now)
+            };
+            for (target, via) in g.direct_with(&key, &changed) {
                 match c.status.documents.get_mut(&target) {
                     None => {
                         c.status.documents.insert(target.clone(), DocEntry { state: DocState::Pending, reason: None, via: vec![via.clone()] });

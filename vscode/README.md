@@ -11,15 +11,15 @@ Works with [uspec](../docs/overview.md) projects: the spec tree with its types a
 ## What it adds
 
 - **Spec Tree**: nodes with their types, documents and children; new, move and remove nodes through `uspec node`; Go to Node.
-- **Node**: the node of the active file, its template, upstream and downstream nodes, code paths, drift, and the context an agent reads, which can be copied.
-- **Changes**: open changes with what is ready to triage, write and implement, every document's state, and the agent runs. Record states, diff documents against the baseline, review all diffs, close the change.
-- **Agents**: **Run Agents** on a change runs triage, writer and implementer agents with Claude Code, with the prompts from the uspec skills (one triage run per batch, one writer per node with documents to write, one implementer per node), and records their results with `uspec change set`. Triage runs on `uspec.agents.triageModel` (`sonnet` by default), the others on `uspec.agents.model`. A writer returns a result per document; updates can wait for your approval (`uspec.agents.approveWrites`). Every run has a live log and can be resumed in a terminal.
-- **Claude Code sessions**: start a change with `/uspec-spec`, or continue or implement one, in a terminal.
+- **Node**: the node of the active file, its template, its links (a node, or one document or section of it) and downstream nodes, code paths, drift, and the context an agent reads, which can be copied.
+- **Changes**: open changes with what is next (find the starting documents, triage, write, plan, implement), every document's state, the plans, and the agent runs. Record states, diff documents against the baseline, review all diffs, close the change.
+- **Agents**: the extension orchestrates a change. **Run Agents** runs Claude Code agents with the prompts that come with the uspec skills, step by step: an impact agent finds the documents the change starts at from `change.md`, for you to review; one triage run per batch and one writer per node with documents to write settle the spec; a planner writes the plans for the code; one implementer per plan implements them, independent plans in parallel. Results are recorded with `uspec change set`. Triage runs on `uspec.agents.triageModel` (`sonnet` by default), the others on `uspec.agents.model`. A writer returns a result per document; updates can wait for your approval (`uspec.agents.approveWrites`), and so can the plans (`uspec.agents.approvePlans`). Every run has a live log and can be resumed in a terminal.
+- **Claude Code sessions**: write `change.md` with `/uspec-spec` in a terminal, or continue a change there to resolve a blocked writer or a gap.
 - **Problems, badges and editing help**: `uspec validate` errors on the right line, drift warnings, change states in the Explorer, completion and links in `node.yaml`, `node-type.yaml` and template frontmatter, and a line at the top of each spec document with its template and actions.
 
 ## Agents and permissions
 
-Agent runs are `claude -p` in the project root. They can't ask for permission, so anything outside their rules is denied: triage and reviewers only read and run `git diff`, `git show` and `git log`; a writer may also edit its documents and their `-extra/` folders; an implementer may edit its node's code paths and gets `uspec.agents.implementerAllowedTools` on top (`Bash` by default, so it can run tests). Runs cost what Claude Code costs; each run's cost is shown next to it.
+Agent runs are `claude -p` in the project root. They can't ask for permission, so anything outside their rules is denied: impact, triage and reviewers only read and run `git diff`, `git show` and `git log`; a writer may also edit its documents and their `-extra/` folders; a planner may write in the change's `plans/`; an implementer may edit the code paths of its plan's nodes and gets `uspec.agents.implementerAllowedTools` on top (`Bash` by default, so it can run tests). Runs cost what Claude Code costs; each run's cost is shown next to it.
 
 ## Develop
 

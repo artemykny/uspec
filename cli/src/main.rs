@@ -8,7 +8,9 @@ mod git;
 mod graph;
 mod init;
 mod node;
+mod plans;
 mod project;
+mod sections;
 mod tree;
 mod types;
 mod validate;
@@ -135,7 +137,7 @@ enum ChangeCmd {
     List,
     /// Print every item in the change with its state.
     Status { name: String },
-    /// Print what's ready to triage, write or implement.
+    /// Print what's ready: impact, triage, write, plan or implement.
     Next { name: String },
     /// Record an item's state (updated, affected, no-change, done) and propagate.
     Set {
@@ -194,7 +196,7 @@ fn run(cmd: Cmd, out: &Out) -> Result<()> {
         Cmd::Change { cmd } => match cmd {
             ChangeCmd::New { name } => change::cmd_new(&project, &name, out),
             ChangeCmd::List => change::cmd_list(&project, out),
-            ChangeCmd::Status { name } => change::cmd_status(&project, &name, out),
+            ChangeCmd::Status { name } => change::cmd_status(&project, &tree, &name, out),
             ChangeCmd::Next { name } => change::cmd_next(&project, &types, &tree, &name, out),
             ChangeCmd::Set { name, item, state, reason } => {
                 change::cmd_set(&project, &types, &tree, &name, &item, &state, reason, out)
@@ -239,7 +241,7 @@ fn cmd_tree(project: &Project, tree: &tree::Tree, node: Option<&str>, out: &Out)
                     "type": n.type_id,
                     "depth": depth_of(&n.path) - base_depth,
                     "documents": n.docs,
-                    "derives_from": n.links,
+                    "derives_from": n.deps.iter().map(|l| l.raw.clone()).chain(n.bad_links.iter().map(|(r, _)| r.clone())).collect::<Vec<_>>(),
                     "code": n.code,
                 })
             })
@@ -260,7 +262,7 @@ fn cmd_tree(project: &Project, tree: &tree::Tree, node: Option<&str>, out: &Out)
             line.push_str(&format!("  code: {}", n.code.join(", ")));
         }
         println!("{line}");
-        for l in &n.links {
+        for l in n.deps.iter().map(|l| &l.raw).chain(n.bad_links.iter().map(|(r, _)| r)) {
             println!("{}  → {l}", "  ".repeat(d));
         }
     }

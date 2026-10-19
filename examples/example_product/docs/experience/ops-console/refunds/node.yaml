@@ -1,6 +1,6 @@
 type: screen
 derives_from:
-  - product/support/refunds
+  - product/support/refunds/rules.md#refund-window
   - system/services/payments
   - experience/design-system
 code:

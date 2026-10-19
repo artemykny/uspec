@@ -12,7 +12,7 @@ The `uspec` command does everything that doesn't need judgement: it scaffolds th
 | [`types`](types/) | Prints the node types with their documents. |
 | [`context`](context/) | Prints the instructions and files an agent reads to write a document or implement a node. |
 | [`node`](node/) | Adds, moves and removes nodes. |
-| [`change`](change/) | Opens a change, shows what's ready to triage, write or implement, records results, closes it. |
+| [`change`](change/) | Opens a change, shows what's ready to find, triage, write, plan or implement, records results, closes it. |
 | [`drift`](drift/) | Finds code changed without a spec change. |
 
 ## Conventions
@@ -72,7 +72,8 @@ The files shared by all commands:
 | `src/main.rs` | The command line, output and error handling; dispatches to the commands |
 | `src/project.rs` | Finds the project, reads `.uspec/config.yaml`, converts paths |
 | `src/types.rs` | Loads node types and templates, collecting their problems for `validate` |
-| `src/tree.rs` | Loads the spec tree and answers questions about it (ancestors, descendants, links) |
+| `src/tree.rs` | Loads the spec tree and answers questions about it (ancestors, descendants, links); parses links |
+| `src/sections.rs` | Markdown sections: headings, anchors, a section's text |
 | `src/git.rs` | Calls to git |
 
 Each command's own code is listed in its node.

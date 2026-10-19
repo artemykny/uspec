@@ -13,6 +13,8 @@ A product is described as a **tree of nodes**. Each node is a directory that des
 
 Nothing else goes in a node directory. A child's path is its parent's path plus the directory name; nodes are named by their path relative to the spec root.
 
+**Sections.** Documents are Markdown. A **section** is a heading and everything under it, up to the next heading of the same or a higher level, so its subsections are part of it. A section is named by its heading's anchor, as Markdown renderers link to it: the heading text in lowercase, without characters other than letters, digits, spaces, `-` and `_`, and with spaces turned into `-` (`## Refund window` → `refund-window`). Headings inside fenced code blocks don't count; when two headings of a document have the same anchor, the first is meant. A dependency can point to a section instead of the whole document (see [links](../links/) and [node types](../node-types/)), so a change elsewhere in the document doesn't reach what depends only on the section.
+
 **`node.yaml`.** It holds the node's metadata, not its content; the content lives in the documents.
 
 ```yaml

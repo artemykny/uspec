@@ -1,7 +1,7 @@
 // The Node view: the node of the active file, its template, links, code, state and context
 // (docs/vscode/overview.md#views).
 import * as vscode from 'vscode';
-import { CONTEXT_GROUPS, type ContextJson } from '../core/model';
+import { CONTEXT_GROUPS, type ContextFileJson, type ContextJson } from '../core/model';
 import { docKey, showNode } from '../core/paths';
 import { codePaths, STATE_LABEL, type Project, type ProjectManager } from '../projects';
 
@@ -17,14 +17,14 @@ export type NodeEl =
   | { kind: 'title' }
   | { kind: 'template' }
   | { kind: 'section'; section: 'upstream' | 'downstream' | 'code' }
-  | { kind: 'link'; node: string }
+  | { kind: 'link'; node: string; doc?: string; section?: string }
   | { kind: 'code'; path: string; dir: boolean }
   | { kind: 'state' }
   | { kind: 'drift' }
   | { kind: 'context'; mode: Mode }
   | { kind: 'instructions'; mode: Mode; name: string; text: string | null }
-  | { kind: 'group'; mode: Mode; group: string; files: { path: string; note: string | null }[]; baseline: string | null }
-  | { kind: 'file'; path: string; note: string | null; baseline: string | null }
+  | { kind: 'group'; mode: Mode; group: string; files: ContextFileJson[]; baseline: string | null }
+  | { kind: 'file'; path: string; section: string | null; note: string | null; baseline: string | null }
   | { kind: 'error'; text: string };
 
 export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode.Disposable {
@@ -84,7 +84,7 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
     }
     switch (el.kind) {
       case 'section':
-        if (el.section === 'upstream') return n.links.map((l) => ({ kind: 'link', node: l }));
+        if (el.section === 'upstream') return n.deps.map((l) => ({ kind: 'link', node: l.node, doc: l.doc, section: l.section }));
         if (el.section === 'downstream') return (t.p.downstream.get(t.node) ?? []).map((l) => ({ kind: 'link', node: l }));
         return codePaths(t.p, t.node).map((c) => ({ kind: 'code', path: c.path, dir: c.dir }));
       case 'context': {
@@ -101,7 +101,7 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
         }
       }
       case 'group':
-        return el.files.map((f) => ({ kind: 'file', path: f.path, note: f.note, baseline: el.baseline }));
+        return el.files.map((f) => ({ kind: 'file', path: f.path, section: f.section ?? null, note: f.note, baseline: el.baseline }));
       default:
         return [];
     }
@@ -155,22 +155,25 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
         return item;
       }
       case 'section': {
-        const count = el.section === 'upstream' ? n.links.length : el.section === 'downstream' ? (p.downstream.get(t.node)?.length ?? 0) : n.code.length;
+        const count = el.section === 'upstream' ? n.deps.length : el.section === 'downstream' ? (p.downstream.get(t.node)?.length ?? 0) : n.code.length;
         const label = el.section === 'upstream' ? 'Upstream' : el.section === 'downstream' ? 'Downstream' : 'Code';
         const item = new vscode.TreeItem(label, count ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
         item.description = String(count);
         item.tooltip =
-          el.section === 'upstream' ? 'Nodes this node derives from' : el.section === 'downstream' ? 'Nodes that derive from this node' : 'Code paths';
+          el.section === 'upstream' ? 'What this node derives from: nodes, or one document or section of a node' : el.section === 'downstream' ? 'Nodes that derive from this node' : 'Code paths';
         item.iconPath = new vscode.ThemeIcon(el.section === 'upstream' ? 'arrow-up' : el.section === 'downstream' ? 'arrow-down' : 'code');
         return item;
       }
       case 'link': {
         const item = new vscode.TreeItem(showNode(el.node));
         const lt = p.typeOf(el.node);
-        item.description = p.nodes.get(el.node)?.type ?? 'missing';
-        item.tooltip = lt?.description ?? undefined;
-        item.iconPath = new vscode.ThemeIcon(lt?.code ? 'file-code' : 'symbol-namespace');
-        item.command = { command: 'uspec.revealNode', title: 'Reveal', arguments: [p.root, el.node, true] };
+        const type = p.nodes.get(el.node)?.type ?? 'missing';
+        item.description = el.doc ? `${el.doc}.md${el.section ? `#${el.section}` : ''} · ${type}` : type;
+        item.tooltip = el.doc ? `Only ${el.section ? `the ${el.section} section of ` : ''}${el.doc}.md of ${showNode(el.node)}` : (lt?.description ?? undefined);
+        item.iconPath = new vscode.ThemeIcon(el.section ? 'symbol-key' : el.doc ? 'file' : lt?.code ? 'file-code' : 'symbol-namespace');
+        item.command = el.doc
+          ? { command: 'uspec.openSection', title: 'Open', arguments: [p.root, p.docFile(docKey(el.node, el.doc)), el.section] }
+          : { command: 'uspec.revealNode', title: 'Reveal', arguments: [p.root, el.node, true] };
         return item;
       }
       case 'code': {
@@ -209,14 +212,16 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
         return item;
       }
       case 'file': {
-        const item = new vscode.TreeItem(el.path);
+        const item = new vscode.TreeItem(el.section ? `${el.path}#${el.section}` : el.path);
         item.resourceUri = p.uriOf(el.path);
-        item.description = el.note ?? undefined;
+        item.description = el.note ?? (el.section ? 'this section only' : undefined);
         item.iconPath = el.path.endsWith('/') ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
         if (el.note?.startsWith('diff since') && el.baseline) {
           item.command = { command: 'uspec.diffFile', title: 'Diff', arguments: [p.root, el.path, el.baseline] };
         } else if (el.path.endsWith('/')) {
           item.command = { command: 'uspec.revealPath', title: 'Reveal', arguments: [p.root, el.path] };
+        } else if (el.section) {
+          item.command = { command: 'uspec.openSection', title: 'Open', arguments: [p.root, el.path, el.section] };
         } else {
           item.command = { command: 'vscode.open', title: 'Open', arguments: [item.resourceUri] };
         }

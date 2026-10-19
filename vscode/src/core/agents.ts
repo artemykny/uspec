@@ -3,13 +3,15 @@
 import type { NextJson } from './model';
 import { nodeKey, normaliseCodePath, splitDoc, toDocKey } from './paths';
 
-export type Role = 'triage' | 'writer' | 'implementer' | 'reviewer';
+export type Role = 'impact' | 'triage' | 'writer' | 'planner' | 'implementer' | 'reviewer';
 
-/** Each role's prompt: a file next to its skill (docs/skills/overview.md). */
+/** Each role's prompt: a file next to a skill (docs/skills/overview.md#agent-prompts). */
 export const PROMPTS: Record<Role, { skill: string; file: string }> = {
+  impact: { skill: 'uspec-spec', file: 'impact-agent.md' },
   triage: { skill: 'uspec-spec', file: 'triage-agent.md' },
   writer: { skill: 'uspec-spec', file: 'writer-agent.md' },
-  implementer: { skill: 'uspec-implement', file: 'implementer-agent.md' },
+  planner: { skill: 'uspec-spec', file: 'planner-agent.md' },
+  implementer: { skill: 'uspec-spec', file: 'implementer-agent.md' },
   reviewer: { skill: 'uspec-review', file: 'reviewer-agent.md' },
 };
 
@@ -26,6 +28,32 @@ export function triageInput(next: NextJson): string {
   const read: [string, string][] = next.triage.read.map((r) => [r.path, r.diff_since ? `diff since ${short(r.diff_since)}` : '']);
   const batch: [string, string][] = next.triage.batch.map((b) => [b.path, b.via.join('; ')]);
   return `triage:\n  read:\n${columns(read, '    ')}  batch:\n${columns(batch, '    ')}`;
+}
+
+/** The impact agent's input: the path of `change.md`, then `uspec tree` as it prints it. */
+export function impactInput(changeMd: string, tree: string): string {
+  return `Change: ${changeMd}\n\n${tree.trimEnd()}\n`;
+}
+
+/** One `## <node>` block per node, each followed by its `uspec context <node> --implement` output. */
+function nodeContexts(contexts: { node: string; context: string }[]): string {
+  return contexts.map((c) => `## ${c.node}\n\n${c.context.trimEnd()}\n`).join('\n');
+}
+
+/** The planner's input: where plans go, what to plan, the plans already written, then each node's context. */
+export function plannerInput(o: { changeMd: string; dir: string; nodes: string[]; existing: string[]; contexts: { node: string; context: string }[] }): string {
+  return [
+    `Change: ${o.changeMd}`,
+    `Plans: ${o.dir}`,
+    `Nodes to plan:\n${o.nodes.join('\n')}`,
+    `Existing plans:\n${o.existing.length ? o.existing.join('\n') : 'none'}`,
+    nodeContexts(o.contexts),
+  ].join('\n\n');
+}
+
+/** An implementer's input after the mode line: the plan's path, then each of its nodes' context. */
+export function implementerInput(plan: string, contexts: { node: string; context: string }[]): string {
+  return `Plan: ${plan}\n\n${nodeContexts(contexts)}`;
 }
 
 /**
@@ -81,12 +109,15 @@ function editRules(path: string, dir: boolean): string[] {
 
 export function permissions(
   role: Role,
-  opts: { documents?: string[]; extraDirs?: string[]; codePaths?: { path: string; dir: boolean }[]; implementerAllowed?: string[] } = {},
+  opts: { documents?: string[]; extraDirs?: string[]; plansDir?: string; codePaths?: { path: string; dir: boolean }[]; implementerAllowed?: string[] } = {},
 ): Permissions {
   switch (role) {
+    case 'impact':
     case 'triage':
     case 'reviewer':
       return { tools: ['Read', 'Glob', 'Grep', 'Bash'], allowed: READ };
+    case 'planner':
+      return { tools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'], allowed: [...READ, ...(opts.plansDir ? editRules(opts.plansDir, true) : [])] };
     case 'writer': {
       const allowed = [...READ];
       for (const d of opts.documents ?? []) allowed.push(...editRules(d, false));
@@ -144,6 +175,46 @@ function verdict(lines: string[], words: string[]): { word: string; rest: string
     if (words.includes(word)) return { word, rest: lines.slice(i + 1) };
   }
   return undefined;
+}
+
+export interface StartingDocument {
+  document: string;
+  reason: string;
+}
+
+/**
+ * Reads an impact result: each line `<document> | <reason>` naming a document `exists` knows, once, in
+ * order; the documents it doesn't know; and the notes.
+ */
+export function parseImpact(text: string, exists: (key: string) => boolean, specRoot: string): { documents: StartingDocument[]; unknown: string[]; notes: string } {
+  const lines = resultLines(text);
+  const documents: StartingDocument[] = [];
+  const unknown: string[] = [];
+  let notesAt = -1;
+  lines.forEach((line, i) => {
+    if (/^notes:?$/i.test(line.replace(/^#+\s*/, ''))) notesAt = notesAt < 0 ? i : notesAt;
+    if (notesAt >= 0) return;
+    const parts = line.replace(/^[-*]\s+/, '').split('|');
+    if (parts.length < 2) return;
+    const doc = toDocKey(specRoot, parts[0]);
+    const reason = parts.slice(1).join('|').trim();
+    if (!reason) return;
+    if (!exists(doc)) unknown.push(doc);
+    else if (!documents.some((d) => d.document === doc)) documents.push({ document: doc, reason });
+  });
+  const notes = notesAt >= 0 ? lines.slice(notesAt + 1).join('\n').trim() : '';
+  return { documents, unknown, notes: /^[-*\s]*(none|n\/a|nothing)\.?$/i.test(notes) ? '' : notes };
+}
+
+export type PlannerResult = { kind: 'planned'; plans: string[] } | { kind: 'failed'; detail: string } | { kind: 'invalid' };
+
+/** Reads a planner result: `planned` and a line per plan, or `failed` and why. */
+export function parsePlanner(text: string): PlannerResult {
+  const v = verdict(resultLines(text), ['planned', 'failed']);
+  if (!v) return { kind: 'invalid' };
+  const rest = v.rest.filter((l) => l !== '');
+  if (v.word === 'failed') return { kind: 'failed', detail: rest.join('\n') };
+  return { kind: 'planned', plans: rest.filter((l) => l.includes('|')).map((l) => l.split('|')[0].replace(/^[-*]\s+/, '').trim()) };
 }
 
 export interface TriageDecision {

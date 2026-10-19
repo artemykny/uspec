@@ -32,15 +32,15 @@ A node type says what a node of the [spec tree](../spec-tree/) is: which types i
 |---|---|---|
 | `description` | yes | What the document covers and how to fill it. It decides what goes in this document and what goes elsewhere. |
 | `required` | no | Whether every node of the type must have this document. Defaults to `true`. |
-| `derives_from` | no | Ids of other documents of the same type this one is built from. |
+| `derives_from` | no | Ids of other documents of the same type this one is built from, or `<id>#<anchor>` for one [section](../spec-tree/) of such a document. |
 | `exposed` | no | Whether nodes that link to this node see this document. Defaults to `true`. |
 | `extra` | no | `true` if the document may have extra files. Defaults to `false`. |
 
-**Document dependencies.** Documents inside one node depend on each other: a service's `logic.md` implements what its `api.md` promises. A template's `derives_from` declares this once per type, so every node of the type has the same order (`api → logic → storage`). Document dependencies set:
+**Document dependencies.** Documents inside one node depend on each other: a service's `logic.md` implements what its `api.md` promises. A template's `derives_from` declares this once per type, so every node of the type has the same order (`api → logic → storage`). A dependency can narrow to a section a document of the type always has, from its template: `derives_from: [api#errors]` builds the document from the errors section of `api.md`, and a change elsewhere in `api.md` doesn't reach it. Document dependencies set:
 
 - **Order.** A node's documents are written in dependency order.
-- **Changes.** A change to a document reaches the documents that derive from it, never the other way by itself (see [changes](../changes/)).
-- **Context.** An agent writing a document reads the documents it derives from, not every document in the node (see [context](../context/)).
+- **Changes.** A change to a document reaches the documents that derive from it, or from a section of it that changed, never the other way by itself (see [changes](../changes/)).
+- **Context.** An agent writing a document reads the documents and sections it derives from, not every document in the node (see [context](../context/)).
 
 If a node doesn't have an optional document, dependencies on it are skipped.
 
@@ -53,9 +53,9 @@ If a node doesn't have an optional document, dependencies on it are skipped.
 - every type directory has a `node-type.yaml`, and every listed document has a template;
 - every type id in `children` and `derives_from` exists;
 - types form no cycle through `children`, other than a type allowing itself (Domain → Feature → Domain is invalid), because detail would go back up;
-- every document id in a template's `derives_from` is declared by the type, and document dependencies within a type form no cycle.
+- every document id in a template's `derives_from`, with or without a section, is declared by the type, and document dependencies within a type form no cycle.
 
-A node is valid against its type only if its type exists, its children have allowed types, it has every required document, it has `-extra` folders only for documents that allow them, it lists code paths exactly when its type has `code: true`, and it links only to nodes whose type is in its type's `derives_from`.
+A node is valid against its type only if its type exists, its children have allowed types, it has every required document, it has `-extra` folders only for documents that allow them, it lists code paths exactly when its type has `code: true`, every section its documents derive from exists in its documents, and it links only to nodes whose type is in its type's `derives_from`.
 
 ## Example
 

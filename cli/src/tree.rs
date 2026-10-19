@@ -37,12 +37,70 @@ impl NodeYaml {
     }
 }
 
+/// A link (docs/method/links/rules.md): a node, or one document or section of it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Link {
+    /// As written in node.yaml, without a trailing `/`.
+    pub raw: String,
+    /// The target node's path; "" for the root.
+    pub node: String,
+    /// The document id it narrows to.
+    pub doc: Option<String>,
+    /// The section anchor it narrows to.
+    pub section: Option<String>,
+}
+
+impl Link {
+    pub fn parse(raw: &str) -> Result<Link, String> {
+        let raw = raw.trim().trim_end_matches('/').to_string();
+        let (path, section) = match raw.split_once('#') {
+            Some((p, s)) => (p, Some(s.to_string())),
+            None => (raw.as_str(), None),
+        };
+        if section.as_deref() == Some("") {
+            return Err("its section is empty".into());
+        }
+        let link = match path.strip_suffix(".md") {
+            Some(stem) => {
+                let (node, doc) = match stem.rsplit_once('/') {
+                    Some((n, d)) => (n.to_string(), d.to_string()),
+                    None => (String::new(), stem.to_string()),
+                };
+                Link { raw: raw.clone(), node, doc: Some(doc), section }
+            }
+            None if section.is_some() => {
+                return Err("a section is named in a document: <node>/<document>.md#<section>".into());
+            }
+            None => Link { raw: raw.clone(), node: path.to_string(), doc: None, section: None },
+        };
+        Ok(link)
+    }
+
+    /// The link written for a node at `node`, keeping the document and section.
+    pub fn format(node: &str, doc: Option<&str>, section: Option<&str>) -> String {
+        let mut s = match doc {
+            Some(d) => doc_key(node, d),
+            None => show_node(node).to_string(),
+        };
+        if let Some(sec) = section {
+            s.push('#');
+            s.push_str(sec);
+        }
+        s
+    }
+}
+
 pub struct Node {
     /// Path relative to the spec root; "" for the root.
     pub path: String,
     pub has_node_yaml: bool,
     pub yaml_error: Option<String>,
     pub type_id: Option<String>,
+    /// The links as written, parsed.
+    pub deps: Vec<Link>,
+    /// Links that can't be parsed: as written, and why.
+    pub bad_links: Vec<(String, String)>,
+    /// The nodes it links to, each once, in order.
     pub links: Vec<String>,
     pub code: Vec<String>,
     /// Ids of the documents present in the node, in the type's order.
@@ -99,6 +157,8 @@ fn visit(tree: &mut Tree, types: &Types, dir: &Path, path: String, parent: Optio
         has_node_yaml: yaml_path.exists(),
         yaml_error: None,
         type_id: None,
+        deps: vec![],
+        bad_links: vec![],
         links: vec![],
         code: vec![],
         docs: vec![],
@@ -112,7 +172,17 @@ fn visit(tree: &mut Tree, types: &Types, dir: &Path, path: String, parent: Optio
             Ok(y) => {
                 let y = y.unwrap_or_default();
                 node.type_id = y.type_id;
-                node.links = y.derives_from.iter().map(|l| l.trim_end_matches('/').to_string()).collect();
+                for raw in &y.derives_from {
+                    match Link::parse(raw) {
+                        Ok(l) => {
+                            if !node.links.contains(&l.node) {
+                                node.links.push(l.node.clone());
+                            }
+                            node.deps.push(l);
+                        }
+                        Err(e) => node.bad_links.push((raw.trim().to_string(), e)),
+                    }
+                }
                 node.code = y.code;
             }
             Err(e) => node.yaml_error = Some(e.to_string()),
@@ -195,6 +265,11 @@ impl Tree {
         self.nodes.values().filter(|n| n.links.iter().any(|l| l == path)).collect()
     }
 
+    /// A document's text on disk.
+    pub fn read_doc(&self, project: &Project, key: &str) -> Option<String> {
+        fs::read_to_string(project.spec_dir().join(key)).ok()
+    }
+
     pub fn doc_exists(&self, key: &str) -> bool {
         let (node, id) = split_doc(key);
         self.nodes.get(&node).is_some_and(|n| n.docs.contains(&id))
@@ -212,4 +287,23 @@ impl Tree {
 /// Whether `path` is `root` or inside it.
 pub fn is_under(path: &str, root: &str) -> bool {
     root.is_empty() || path == root || path.starts_with(&format!("{root}/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_links() {
+        let l = Link::parse("product/support/refunds/").unwrap();
+        assert_eq!((l.node.as_str(), l.doc.as_deref(), l.section.as_deref()), ("product/support/refunds", None, None));
+        let l = Link::parse("product/support/refunds/rules.md#refund-window").unwrap();
+        assert_eq!((l.node.as_str(), l.doc.as_deref(), l.section.as_deref()), ("product/support/refunds", Some("rules"), Some("refund-window")));
+        let l = Link::parse("overview.md").unwrap();
+        assert_eq!((l.node.as_str(), l.doc.as_deref()), ("", Some("overview")));
+        assert!(Link::parse("product/support/refunds#window").is_err());
+        assert!(Link::parse("a/rules.md#").is_err());
+        assert_eq!(Link::format("a/b", Some("rules"), Some("x")), "a/b/rules.md#x");
+        assert_eq!(Link::format("a/b", None, None), "a/b");
+    }
 }

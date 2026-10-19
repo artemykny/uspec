@@ -4,3 +4,4 @@ derives_from:
 code:
   - cli/src/change.rs
   - cli/src/graph.rs
+  - cli/src/plans.rs

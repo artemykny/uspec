@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use serde_json::json;
 
 use crate::project::{show_node, Project};
-use crate::tree::{is_under, join, NodeYaml, Tree};
+use crate::tree::{is_under, join, Link, NodeYaml, Tree};
 use crate::types::Types;
 use crate::Out;
 
@@ -59,10 +59,14 @@ pub fn cmd_new(
     check_place(tree, types, &path, type_id)?;
     let links: Vec<String> = links.iter().map(|l| project.to_spec_rel(l)).collect();
     for l in &links {
-        let Some(target) = tree.get(l) else { bail!("can't link to {l}: it doesn't exist") };
+        let link = Link::parse(l).map_err(|e| anyhow::anyhow!("invalid link `{l}`: {e}"))?;
+        let Some(target) = tree.get(&link.node) else { bail!("can't link to {l}: it doesn't exist") };
         let tt = target.type_id.as_deref().unwrap_or("");
         if !t.derives_from.iter().any(|d| d == tt) {
             bail!("can't link to {l}: type `{tt}` isn't in `{type_id}`'s derives_from");
+        }
+        if let Some(problem) = crate::validate::link_problem(project, types, tree, &link) {
+            bail!("can't link to {l}: it {problem}");
         }
     }
     if t.code && code.is_empty() {
@@ -123,7 +127,18 @@ pub fn cmd_move(project: &Project, types: &Types, tree: &Tree, from_arg: &str, t
         let new_path = rename(&n.path).unwrap_or_else(|| n.path.clone());
         let file = project.spec_dir().join(&new_path).join("node.yaml");
         let mut y: NodeYaml = serde_yaml::from_str(&fs::read_to_string(&file)?)?;
-        y.derives_from = y.derives_from.iter().map(|l| rename(l.trim_end_matches('/')).unwrap_or_else(|| l.clone())).collect();
+        // The link keeps the document and section it narrows to.
+        y.derives_from = y
+            .derives_from
+            .iter()
+            .map(|raw| match Link::parse(raw) {
+                Ok(l) => match rename(&l.node) {
+                    Some(to) => Link::format(&to, l.doc.as_deref(), l.section.as_deref()),
+                    None => raw.clone(),
+                },
+                Err(_) => raw.clone(),
+            })
+            .collect();
         fs::write(&file, y.to_yaml())?;
         rewritten.push(show_node(&new_path).to_string());
     }
@@ -151,9 +166,9 @@ pub fn cmd_remove(project: &Project, tree: &Tree, path_arg: &str, out: &Out) -> 
         if is_under(&n.path, &path) {
             continue;
         }
-        for l in &n.links {
-            if is_under(l, &path) {
-                blockers.push(format!("{} links to {l}", show_node(&n.path)));
+        for l in &n.deps {
+            if is_under(&l.node, &path) {
+                blockers.push(format!("{} links to {}", show_node(&n.path), l.raw));
             }
         }
     }

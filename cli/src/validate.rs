@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::project::{show_node, Project};
-use crate::tree::Tree;
+use crate::sections::{self, split_ref};
+use crate::tree::{doc_key, Link, Tree};
 use crate::types::Types;
 use crate::Issue;
 
@@ -28,7 +29,8 @@ fn check_types(project: &Project, types: &Types, out: &mut Vec<Issue>) {
         }
         for (doc, tpl) in &t.templates {
             for dep in &tpl.derives_from {
-                if !t.documents.contains(dep) {
+                let (dep, _) = split_ref(dep);
+                if !t.documents.iter().any(|d| d == dep) {
                     out.push(Issue::new(
                         project.rel(&project.types_dir().join(&t.id).join(format!("{doc}.md"))),
                         format!("`derives_from` references document `{dep}`, which type `{}` doesn't declare", t.id),
@@ -36,8 +38,11 @@ fn check_types(project: &Project, types: &Types, out: &mut Vec<Issue>) {
                 }
             }
         }
-        let doc_edges: HashMap<String, Vec<String>> =
-            t.templates.iter().map(|(d, tpl)| (d.clone(), tpl.derives_from.clone())).collect();
+        let doc_edges: HashMap<String, Vec<String>> = t
+            .templates
+            .iter()
+            .map(|(d, tpl)| (d.clone(), tpl.derives_from.iter().map(|r| split_ref(r).0.to_string()).collect()))
+            .collect();
         if let Some(cycle) = find_cycle(&doc_edges) {
             out.push(Issue::new(rel.clone(), format!("document dependencies form a cycle: {}", cycle.join(" → "))));
         }
@@ -109,17 +114,38 @@ fn check_nodes(project: &Project, types: &Types, tree: &Tree, out: &mut Vec<Issu
         if !t.code && !node.code.is_empty() {
             out.push(Issue::new(at.clone(), format!("lists code paths, but type `{type_id}` doesn't have code: true")));
         }
-        for link in &node.links {
-            match tree.get(link) {
-                None => out.push(Issue::new(at.clone(), format!("links to {link}, which doesn't exist"))),
+        // Sections the node's documents derive from exist in its documents.
+        for d in &node.docs {
+            for dep in t.templates.get(d).map(|tpl| tpl.derives_from.as_slice()).unwrap_or_default() {
+                let (did, Some(sec)) = split_ref(dep) else { continue };
+                if !node.docs.iter().any(|x| x == did) {
+                    continue;
+                }
+                if !tree.read_doc(project, &doc_key(&node.path, did)).is_some_and(|text| sections::has(&text, sec)) {
+                    out.push(Issue::new(
+                        project.spec_file(&doc_key(&node.path, d)),
+                        format!("derives from {did}.md#{sec}, which has no such section"),
+                    ));
+                }
+            }
+        }
+        for (raw, why) in &node.bad_links {
+            out.push(Issue::new(at.clone(), format!("invalid link `{raw}`: {why}")));
+        }
+        for link in &node.deps {
+            match tree.get(&link.node) {
+                None => out.push(Issue::new(at.clone(), format!("links to {}, which doesn't exist", link.raw))),
                 Some(target) => {
                     if let Some(tt) = target.type_id.as_deref().filter(|tt| types.get(tt).is_some()) {
                         if !t.derives_from.iter().any(|d| d == tt) {
                             out.push(Issue::new(
                                 at.clone(),
-                                format!("links to {link} of type `{tt}`, which isn't in `{type_id}`'s derives_from"),
+                                format!("links to {} of type `{tt}`, which isn't in `{type_id}`'s derives_from", link.raw),
                             ));
                         }
+                    }
+                    if let Some(problem) = link_problem(project, types, tree, link) {
+                        out.push(Issue::new(at.clone(), format!("links to {}, which {problem}", link.raw)));
                     }
                 }
             }
@@ -131,6 +157,23 @@ fn check_nodes(project: &Project, types: &Types, tree: &Tree, out: &mut Vec<Issu
         let shown: Vec<&str> = cycle.iter().map(|p| show_node(p)).collect();
         out.push(Issue::new(project.spec_file(""), format!("links form a cycle: {}", shown.join(" → "))));
     }
+}
+
+/// What is wrong with the document or section a link narrows to, if anything; the target node exists.
+/// Worded to follow "which": `doesn't exist`, `is internal`, `has no such section`.
+pub fn link_problem(project: &Project, types: &Types, tree: &Tree, link: &Link) -> Option<String> {
+    let doc = link.doc.as_deref()?;
+    let target = tree.get(&link.node)?;
+    let tt = target.type_id.as_deref().unwrap_or("");
+    if !target.docs.iter().any(|d| d == doc) {
+        return Some("doesn't exist".into());
+    }
+    if types.template(tt, doc).is_some_and(|t| !t.exposed) {
+        return Some(format!("is internal to {}", show_node(&link.node)));
+    }
+    let sec = link.section.as_deref()?;
+    let text = tree.read_doc(project, &doc_key(&link.node, doc)).unwrap_or_default();
+    (!sections::has(&text, sec)).then(|| "has no such section".into())
 }
 
 fn dir_prefix(at: &str) -> String {

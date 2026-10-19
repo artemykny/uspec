@@ -167,7 +167,7 @@ function nodeItem(p: Project, node: string): vscode.TreeItem {
   const md = new vscode.MarkdownString(undefined, true);
   md.appendMarkdown(`**${showNode(node)}** · ${t ? `${t.name} (\`${t.type}\`)` : `type \`${n.type ?? '?'}\``}\n\n`);
   if (t?.description) md.appendMarkdown(`${t.description.trim()}\n\n`);
-  if (n.links.length) md.appendMarkdown(`Derives from: ${n.links.map((l) => `\`${showNode(l)}\``).join(', ')}\n\n`);
+  if (n.deps.length) md.appendMarkdown(`Derives from: ${n.deps.map((l) => `\`${l.raw}\``).join(', ')}\n\n`);
   const down = p.downstream.get(node) ?? [];
   if (down.length) md.appendMarkdown(`Linked from: ${down.map((l) => `\`${showNode(l)}\``).join(', ')}\n\n`);
   if (n.code.length) md.appendMarkdown(`Code: ${n.code.map((c) => `\`${c}\``).join(', ')}\n\n`);

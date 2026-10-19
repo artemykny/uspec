@@ -14,7 +14,7 @@ Prints the [spec tree](../../method/spec-tree/), or the subtree under `<node>`, 
 
 ## Output
 
-One line per node, indented by two spaces per level below the starting node: the node's name with a trailing `/`, its type (`?` if it has none) and, if it has any, its code paths after `code:`. Each link follows on its own line, marked `→`, as a path relative to the spec root. The starting node is shown by its path (the root by the spec root's name), the others by their directory name.
+One line per node, indented by two spaces per level below the starting node: the node's name with a trailing `/`, its type (`?` if it has none) and, if it has any, its code paths after `code:`. Each link follows on its own line, marked `→`, as written in `node.yaml`: a path relative to the spec root, with the document and section it narrows to. The starting node is shown by its path (the root by the spec root's name), the others by their directory name.
 
 ```
 $ uspec tree system
@@ -25,7 +25,7 @@ system/  system
       → system/domain-model
 ```
 
-With `--json`, a `nodes` array in the same order. Each node has `node` (its path relative to the spec root, `.` for the root), `type` (`null` if none), `depth` (levels below the starting node, which is 0), `documents` (the ids of the documents present, in the type's order), `derives_from` and `code`:
+With `--json`, a `nodes` array in the same order. Each node has `node` (its path relative to the spec root, `.` for the root), `type` (`null` if none), `depth` (levels below the starting node, which is 0), `documents` (the ids of the documents present, in the type's order), `derives_from` (the links as written) and `code`:
 
 ```json
 {

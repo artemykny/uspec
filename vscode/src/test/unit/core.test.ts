@@ -4,20 +4,26 @@ import {
   claudeArgs,
   describeEvent,
   fromExperiment,
+  impactInput,
+  implementerInput,
   modelFor,
+  parseImpact,
   parseImplementer,
+  parsePlanner,
   parseReview,
   parseTriage,
   parseWriter,
   permissions,
+  plannerInput,
   triageInput,
   writerContextArgs,
   writerDocs,
 } from '../../core/agents';
 import { findToken, locateInFile, locateIssue } from '../../core/issues';
+import { anchor, formatLink, headings, parseLink, sectionLine, sectionText } from '../../core/links';
 import type { NextJson } from '../../core/model';
 import { classifySpecPath, codeOwner, nodeKey, projectToSpec, specRootFromConfig, specToProject, splitDoc, toDocKey } from '../../core/paths';
-import { isUnwritten, leftoverGuidance, splitFrontmatter } from '../../core/templates';
+import { isTemplateLeft, isUnwritten, leftoverGuidance, splitFrontmatter } from '../../core/templates';
 import { listItems, yamlPosition } from '../../core/yaml';
 
 describe('paths', () => {
@@ -174,6 +180,46 @@ describe('issues', () => {
   });
 });
 
+describe('links', () => {
+  it('parses links to a node, a document or a section', () => {
+    assert.deepStrictEqual(parseLink('product/support/refunds/'), { raw: 'product/support/refunds', node: 'product/support/refunds' });
+    assert.deepStrictEqual(parseLink('product/support/refunds/rules.md#refund-window'), {
+      raw: 'product/support/refunds/rules.md#refund-window',
+      node: 'product/support/refunds',
+      doc: 'rules',
+      section: 'refund-window',
+    });
+    assert.deepStrictEqual(parseLink('overview.md'), { raw: 'overview.md', node: '', doc: 'overview', section: undefined });
+    assert.strictEqual(parseLink('product/support/refunds#window'), undefined);
+    assert.strictEqual(parseLink('a/rules.md#'), undefined);
+    assert.strictEqual(formatLink('a/b', 'rules', 'x'), 'a/b/rules.md#x');
+    assert.strictEqual(formatLink('', undefined), '.');
+  });
+
+  it('finds sections by their anchors, as the CLI does', () => {
+    assert.strictEqual(anchor('Refund window'), 'refund-window');
+    assert.strictEqual(anchor('  POST /refunds: errors (v2)! '), 'post-refunds-errors-v2');
+    const doc = '# Refunds\n\n## Refund window\n\n14 days.\n\n### Exceptions\n\nNone.\n\n## Payout ##\n\n```\n## Not a heading\n```\n#hashtag\n';
+    assert.deepStrictEqual(
+      headings(doc).map((h) => [h.level, h.anchor, h.line]),
+      [
+        [1, 'refunds', 0],
+        [2, 'refund-window', 2],
+        [3, 'exceptions', 6],
+        [2, 'payout', 10],
+      ],
+    );
+    assert.strictEqual(sectionLine(doc, 'payout'), 10);
+    assert.strictEqual(sectionText(doc, 'refund-window'), '## Refund window\n\n14 days.\n\n### Exceptions\n\nNone.');
+    assert.strictEqual(sectionText(doc, 'nope'), undefined);
+  });
+
+  it('keeps a section in a YAML list item, and drops a comment', () => {
+    const lines = ['derives_from:', '  - product/support/refunds/rules.md#refund-window', '  - system/services/customer-bff   # API-first', 'code:'];
+    assert.deepStrictEqual(listItems(lines, 'derives_from'), ['product/support/refunds/rules.md#refund-window', 'system/services/customer-bff']);
+  });
+});
+
 describe('agents', () => {
   const next: NextJson = {
     change: 'refund-window',
@@ -189,6 +235,9 @@ describe('agents', () => {
       ],
     },
     write: [],
+    impact: null,
+    plan: null,
+    plan_errors: [],
     implement: [],
   };
 
@@ -365,6 +414,67 @@ describe('agents', () => {
     assert.strictEqual(parseImplementer('All good').kind, 'invalid');
     assert.deepStrictEqual(parseReview('No findings.'), { findings: 0 });
     assert.deepStrictEqual(parseReview('contradiction\nWhere: a\n\ngap\nWhere: b'), { findings: 2 });
+  });
+
+  it('builds the inputs of impact, planner and implementer', () => {
+    assert.strictEqual(impactInput('.uspec/changes/c/change.md', 'docs/  root\n'), 'Change: .uspec/changes/c/change.md\n\ndocs/  root\n');
+    const contexts = [
+      { node: 'system/services/payments', context: '# Instructions\n\nService type.\n' },
+      { node: 'experience/ops-console/refunds', context: '# Instructions\n\nScreen type.\n' },
+    ];
+    assert.strictEqual(
+      plannerInput({ changeMd: 'c.md', dir: 'plans/', nodes: contexts.map((c) => c.node), existing: [], contexts }),
+      'Change: c.md\n\nPlans: plans/\n\nNodes to plan:\nsystem/services/payments\nexperience/ops-console/refunds\n\nExisting plans:\nnone\n\n' +
+        '## system/services/payments\n\n# Instructions\n\nService type.\n\n## experience/ops-console/refunds\n\n# Instructions\n\nScreen type.\n',
+    );
+    assert.match(implementerInput('plans/payments.md', contexts.slice(0, 1)), /^Plan: plans\/payments\.md\n\n## system\/services\/payments\n\n# Instructions/);
+    const planner = permissions('planner', { plansDir: '.uspec/changes/c/plans/' });
+    assert.ok(planner.allowed.includes('Write(.uspec/changes/c/plans/**)'));
+    assert.ok(!planner.allowed.some((a) => a.startsWith('Edit(docs')));
+    assert.ok(!permissions('impact').tools.includes('Edit'));
+    assert.strictEqual(modelFor('impact', { model: 'opus', triageModel: 'sonnet' }), 'opus');
+  });
+
+  it('reads impact results', () => {
+    const exists = (k: string) => ['product/support/refunds/rules.md', 'experience/ops-console/refunds/states.md'].includes(k);
+    const r = parseImpact(
+      [
+        'Starting documents:',
+        '```',
+        'docs/product/support/refunds/rules.md | The Refund window section says 14 days | change.md makes it 30',
+        '- `experience/ops-console/refunds/states.md` | The Expired state names the 14-day window',
+        'docs/product/support/refunds/rules.md | twice',
+        'docs/nowhere.md | not in the tree',
+        '',
+        'Notes:',
+        '- A node for disputes may be missing.',
+        '```',
+      ].join('\n'),
+      exists,
+      'docs',
+    );
+    assert.deepStrictEqual(r.documents, [
+      { document: 'product/support/refunds/rules.md', reason: 'The Refund window section says 14 days | change.md makes it 30' },
+      { document: 'experience/ops-console/refunds/states.md', reason: 'The Expired state names the 14-day window' },
+    ]);
+    assert.deepStrictEqual(r.unknown, ['nowhere.md']);
+    assert.strictEqual(r.notes, '- A node for disputes may be missing.');
+  });
+
+  it('reads planner results', () => {
+    assert.deepStrictEqual(parsePlanner('I wrote two plans.\n\nplanned\npayments | system/services/payments | after: none\nscreens | experience/ops-console/refunds | after: payments'), {
+      kind: 'planned',
+      plans: ['payments', 'screens'],
+    });
+    assert.deepStrictEqual(parsePlanner('failed\nThe refunds screen has no state for a pending review.'), { kind: 'failed', detail: 'The refunds screen has no state for a pending review.' });
+    assert.deepStrictEqual(parsePlanner('Here you go.'), { kind: 'invalid' });
+  });
+
+  it('knows a change.md that is still the template', () => {
+    const template = '# <Title: the change in a few words>\n\n## Why\n\n<The problem, and who has it.>\n';
+    assert.ok(isTemplateLeft(template));
+    assert.ok(isTemplateLeft(''));
+    assert.ok(!isTemplateLeft('# Refund window: 30 days\n\n## Why\n\nCustomers miss the window.\n'));
   });
 
   it('knows experiments', () => {

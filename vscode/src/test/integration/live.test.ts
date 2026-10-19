@@ -21,9 +21,11 @@ describe('uspec agents with Claude Code', () => {
     await api.manager.mutate(p, ['change', 'new', c]);
     fs.writeFileSync(
       file(`.uspec/changes/${c}/change.md`),
-      '# Refund window\n\nStarts at: product/support/refunds\n\nCustomers can request a refund within 30 days of delivery instead of 14, so fewer valid claims are refused.\n',
+      '# Refund window: 30 days\n\n## Why\n\nValid claims are refused after 14 days.\n\n## What changes\n\nCustomers can request a refund within 30 days of delivery instead of 14.\n\n' +
+        '## Worked example\n\nAn order is delivered on 1 March; a refund requested on 20 March is accepted (before: refused).\n',
     );
-    fs.writeFileSync(file('docs/product/support/refunds/rules.md'), '# Rules\n\n- A refund can be requested within 30 days of delivery.\n');
+    const rules = file('docs/product/support/refunds/rules.md');
+    fs.writeFileSync(rules, fs.readFileSync(rules, 'utf8').replace('14 days', '30 days'));
     await api.manager.load(p);
     await vscode.commands.executeCommand('uspec.change.recordUpdated', { kind: 'doc', p, node: 'product/support/refunds', doc: 'rules' });
 

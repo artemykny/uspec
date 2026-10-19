@@ -7,6 +7,9 @@ uspec is at the design stage: the method is written down, and first versions of 
 - [x] Product overview and the method's concepts: spec tree, node types, links, context, changes, agents, experiments, drift ([docs/method/](docs/method/overview.md))
 - [x] Node type and node format, validation rules ([node-types](docs/method/node-types/rules.md))
 - [x] Workflow: two modes, stateful changes, propagation and triage, experiments ([changes](docs/method/changes/rules.md))
+- [x] Changes start from `change.md`, a detailed worked example, and an impact step that finds the starting documents
+- [x] Dependencies on a section of a document, not only on a whole node or document ([links](docs/method/links/rules.md))
+- [x] Implementation by plans: a planner cuts the code work into plans, independent ones run in parallel
 - [x] Example product spec tree ([examples/example_product](examples/example_product/))
 
 ## 1. Finish the design
@@ -31,8 +34,8 @@ Implemented in Rust in [cli/](cli/).
 
 First drafts for Claude Code in [skills/](skills/).
 
-- [x] Change spec: propose structure, write documents from templates, triage propagated changes
-- [x] Implement: write and verify the code of a node from its context
+- [x] Change spec: write `change.md` and the structure with the user, then hand the change to VS Code; resolve blocked writers and gaps
+- [x] Agent prompts for the change, run by VS Code: impact, triage, writer, planner, implementer
 - [x] Review: check that nodes with code paths are implementable and don't contradict upstream
 - [x] Experiment to spec: turn a code diff into a spec change
 
@@ -48,6 +51,7 @@ Implemented in TypeScript in [vscode/](vscode/), specified in [docs/vscode/](doc
 - [x] `uspec types`: the node types as JSON, for editors and skills ([cli/types](docs/cli/types/usage.md))
 - [x] Spec Tree, Node, Changes and Node Types views; problems from `validate`, drift, badges, editing help
 - [x] Agents on a change from the Changes view: triage, writers and implementers with Claude Code, recorded through the CLI, with approval of writer updates
+- [x] The extension orchestrates a change: impact, triage and writers, planner, implementers per plan, with approval of the starting documents and the plans
 - [ ] Graph views of the types, the links and a change's propagation
 - [ ] Publish to the Marketplace
 

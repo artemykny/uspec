@@ -4,7 +4,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { findToken } from './core/issues';
-import { nodeKey, normaliseCodePath, parentOf, showNode } from './core/paths';
+import { formatLink, headings, parseLink, sectionLine, sectionText } from './core/links';
+import { docKey, nodeKey, normaliseCodePath, parentOf, showNode } from './core/paths';
+import { splitFrontmatter } from './core/templates';
 import { frontmatterRange, listItems, yamlPosition, type YamlPosition } from './core/yaml';
 import type { Project, ProjectManager } from './projects';
 
@@ -63,7 +65,7 @@ export class Editing implements vscode.CompletionItemProvider, vscode.HoverProvi
     ];
     const templates: vscode.DocumentSelector = [{ scheme: 'file', pattern: '**/.uspec/node-types/*/*.md' }];
     this.disposables = [
-      vscode.languages.registerCompletionItemProvider([...yaml, ...templates], this, ':', ' ', '-', '/', ',', '['),
+      vscode.languages.registerCompletionItemProvider([...yaml, ...templates], this, ':', ' ', '-', '/', ',', '[', '#'),
       vscode.languages.registerHoverProvider(yaml, this),
       vscode.languages.registerDocumentLinkProvider([...yaml, ...templates], this),
     ];
@@ -111,13 +113,36 @@ export class Editing implements vscode.CompletionItemProvider, vscode.HoverProvi
     if (at.key === 'derives_from') {
       const t = p.typeOf(node);
       const existing = at.kind === 'item' ? at.existing : [];
-      return [...p.nodes.values()]
-        .filter((n) => n.path !== node && n.type && t?.derives_from.includes(n.type) && !existing.includes(showNode(n.path)))
+      const candidate = (n: string) => n !== node && Boolean(p.nodes.get(n)?.type && t?.derives_from.includes(p.nodes.get(n)!.type!));
+      // After `<node>/<doc>.md#`: the document's sections.
+      const hash = at.prefix.indexOf('#');
+      if (hash >= 0) {
+        const l = parseLink(at.prefix.slice(0, hash));
+        if (!l?.doc || !candidate(l.node)) return [];
+        const text = readFile(p.abs(p.docFile(docKey(l.node, l.doc))));
+        return headings(text ?? '')
+          .filter((h) => h.anchor)
+          .map((h) => item(formatLink(l.node, l.doc, h.anchor), vscode.CompletionItemKind.Reference, `${'#'.repeat(h.level)} ${h.text}`));
+      }
+      const nodes = [...p.nodes.values()]
+        .filter((n) => candidate(n.path) && !existing.includes(showNode(n.path)))
         .map((n) => {
           const c = item(showNode(n.path), vscode.CompletionItemKind.Reference, n.type ?? undefined, p.types.get(n.type!)?.description ?? undefined);
           c.filterText = showNode(n.path);
           return c;
         });
+      // After `<node>/`: its exposed documents, to link to one document, or to a section of it after `#`.
+      const slash = at.prefix.lastIndexOf('/');
+      const base = slash < 0 ? undefined : nodeKey(at.prefix.slice(0, slash));
+      if (base === undefined || !candidate(base)) return nodes;
+      const docs = (p.nodes.get(base)?.documents ?? [])
+        .filter((d) => p.typeDoc(base, d)?.exposed !== false)
+        .map((d) => {
+          const c = item(formatLink(base, d), vscode.CompletionItemKind.File, 'one document', p.typeDoc(base, d)?.description ?? undefined);
+          c.sortText = `0${d}`;
+          return c;
+        });
+      return [...docs, ...nodes];
     }
     if (at.key === 'code') return this.paths(p, at.prefix);
     return [];
@@ -171,6 +196,16 @@ export class Editing implements vscode.CompletionItemProvider, vscode.HoverProvi
     if (['required', 'exposed', 'extra'].includes(at.key) && at.kind === 'value') return ['true', 'false'].map((b) => item(b, vscode.CompletionItemKind.Value));
     if (at.key === 'derives_from' && at.kind !== 'value') {
       const docs = p.types.get(type)?.documents.map((d) => d.document) ?? [];
+      // After `<doc>#`: the sections of that document's template.
+      const hash = at.prefix.indexOf('#');
+      if (hash >= 0) {
+        const d = at.prefix.slice(0, hash);
+        if (!docs.includes(d)) return [];
+        const body = splitFrontmatter(readFile(p.abs(`.uspec/node-types/${type}/${d}.md`)) ?? '').body;
+        return headings(body)
+          .filter((h) => h.anchor && !/[<>]/.test(h.text))
+          .map((h) => item(`${d}#${h.anchor}`, vscode.CompletionItemKind.Reference, `${'#'.repeat(h.level)} ${h.text}`));
+      }
       return docs.filter((d) => !at.existing.includes(d)).map((d) => item(d, vscode.CompletionItemKind.File, `${d}.md`));
     }
     return [];
@@ -179,7 +214,7 @@ export class Editing implements vscode.CompletionItemProvider, vscode.HoverProvi
   provideHover(doc: vscode.TextDocument, pos: vscode.Position): vscode.Hover | undefined {
     const k = kindOf(this.manager, doc.uri);
     if (!k) return undefined;
-    const range = doc.getWordRangeAtPosition(pos, /[\w./-]+/);
+    const range = doc.getWordRangeAtPosition(pos, /[\w./#-]+/);
     if (!range) return undefined;
     const word = doc.getText(range);
     const p = k.p;
@@ -192,14 +227,27 @@ export class Editing implements vscode.CompletionItemProvider, vscode.HoverProvi
       return new vscode.Hover(md, range);
     }
     if (k.kind === 'node' && key === 'derives_from') {
-      const n = p.nodes.get(nodeKey(word));
-      if (!n) return new vscode.Hover(`No node at \`${word}\``, range);
+      const l = parseLink(word);
+      const n = l && p.nodes.get(l.node);
+      if (!l || !n) return new vscode.Hover(`No node at \`${word}\``, range);
       const nt = p.typeOf(n.path);
-      const exposed = nt?.documents.filter((d) => d.exposed && n.documents.includes(d.document)).map((d) => `\`${d.document}.md\``) ?? [];
-      return new vscode.Hover(
-        new vscode.MarkdownString(`**${showNode(n.path)}** · ${nt?.name ?? n.type ?? '?'}\n\n${nt?.description ?? ''}\n\nThis node reads its ${exposed.join(', ') || 'no documents'}.`),
-        range,
-      );
+      const md = new vscode.MarkdownString(`**${showNode(n.path)}** · ${nt?.name ?? n.type ?? '?'}\n\n${nt?.description ?? ''}\n\n`);
+      if (!l.doc) {
+        const exposed = nt?.documents.filter((d) => d.exposed && n.documents.includes(d.document)).map((d) => `\`${d.document}.md\``) ?? [];
+        md.appendMarkdown(`This node reads its ${exposed.join(', ') || 'no documents'}.`);
+        return new vscode.Hover(md, range);
+      }
+      const text = n.documents.includes(l.doc) ? readFile(p.abs(p.docFile(docKey(n.path, l.doc)))) : undefined;
+      if (text === undefined) return new vscode.Hover(`\`${l.doc}.md\` doesn't exist in \`${showNode(n.path)}\``, range);
+      if (!l.section) {
+        md.appendMarkdown(`This node reads only \`${l.doc}.md\`.`);
+        return new vscode.Hover(md, range);
+      }
+      const sec = sectionText(text, l.section);
+      if (sec === undefined) return new vscode.Hover(`\`${l.doc}.md\` has no section \`#${l.section}\``, range);
+      md.appendMarkdown(`This node reads only this section of \`${l.doc}.md\`:\n\n`);
+      md.appendCodeblock(sec.split('\n').slice(0, 12).join('\n'), 'markdown');
+      return new vscode.Hover(md, range);
     }
     if (k.kind === 'node' && key === 'code') {
       const exists = fs.existsSync(p.abs(normaliseCodePath(word)));
@@ -223,8 +271,17 @@ export class Editing implements vscode.CompletionItemProvider, vscode.HoverProvi
     };
     const p = k.p;
     if (k.kind === 'node') {
-      for (const l of listItems(lines, 'derives_from')) {
-        if (p.nodes.has(nodeKey(l))) link(l, /^derives_from:/, p.uriOf(p.nodeYaml(nodeKey(l))), `Open ${l}/node.yaml`);
+      for (const raw of listItems(lines, 'derives_from')) {
+        const l = parseLink(raw);
+        if (!l || !p.nodes.has(l.node)) continue;
+        if (!l.doc) {
+          link(raw, /^derives_from:/, p.uriOf(p.nodeYaml(l.node)), `Open ${raw}/node.yaml`);
+          continue;
+        }
+        const file = p.docFile(docKey(l.node, l.doc));
+        const line = l.section ? sectionLine(readFile(p.abs(file)) ?? '', l.section) : undefined;
+        const target = line === undefined ? p.uriOf(file) : p.uriOf(file).with({ fragment: `L${line + 1}` });
+        link(raw, /^derives_from:/, target, `Open ${raw}`);
       }
       for (const c of listItems(lines, 'code')) {
         const args = encodeURIComponent(JSON.stringify([p.root, normaliseCodePath(c)]));
@@ -246,12 +303,20 @@ export class Editing implements vscode.CompletionItemProvider, vscode.HoverProvi
       if (!fm) return [];
       const front = lines.slice(0, fm[1] + 1).join('\n');
       for (const d of listItems(lines.slice(0, fm[1] + 1), 'derives_from')) {
-        const f = `.uspec/node-types/${k.type}/${d}.md`;
+        const f = `.uspec/node-types/${k.type}/${d.split('#')[0]}.md`;
         const at = findToken(front, d, /^derives_from:/);
         if (at && fs.existsSync(p.abs(f))) links.push(new vscode.DocumentLink(new vscode.Range(at.line, at.start, at.line, at.end), p.uriOf(f)));
       }
     }
     return links;
+  }
+}
+
+function readFile(file: string): string | undefined {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
   }
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "uspec",
   "displayName": "uspec",
-  "description": "Work with uspec spec trees: navigate nodes and links, see problems and drift, track changes, and run Claude Code agents on them.",
+  "description": "Work with uspec spec trees: navigate nodes and links, see problems and drift, and orchestrate changes with Claude Code agents: find the starting documents, write the spec, plan and implement.",
   "version": "0.1.0",
   "publisher": "uspec",
   "private": true,
@@ -65,7 +65,7 @@
       },
       {
         "view": "uspec.changes",
-        "contents": "No open changes.\n[New Change](command:uspec.change.new)\n[Start Change in Claude Code](command:uspec.claude.startChange)",
+        "contents": "No open changes.\n[Start Change in Claude Code](command:uspec.claude.startChange)\n[New Change](command:uspec.change.new)",
         "when": "uspec.hasProject && !uspec.hasChanges"
       },
       {
@@ -222,9 +222,20 @@
         "category": "uspec"
       },
       {
+        "command": "uspec.change.addDocument",
+        "title": "Add to Change as Starting Document…",
+        "category": "uspec"
+      },
+      {
         "command": "uspec.change.markDone",
         "title": "Mark Done",
         "category": "uspec"
+      },
+      {
+        "command": "uspec.change.openPlan",
+        "title": "Open Plan",
+        "category": "uspec",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "uspec.agents.runChange",
@@ -239,6 +250,12 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "uspec.agents.runImpact",
+        "title": "Find Starting Documents",
+        "category": "uspec",
+        "icon": "$(play)"
+      },
+      {
         "command": "uspec.agents.runTriage",
         "title": "Run Triage Agent",
         "category": "uspec",
@@ -251,8 +268,14 @@
         "icon": "$(play)"
       },
       {
+        "command": "uspec.agents.runPlanner",
+        "title": "Run Planner",
+        "category": "uspec",
+        "icon": "$(play)"
+      },
+      {
         "command": "uspec.agents.runImplementer",
-        "title": "Run Implementer",
+        "title": "Run Implementer on Plan",
         "category": "uspec",
         "icon": "$(play)"
       },
@@ -312,11 +335,6 @@
       {
         "command": "uspec.claude.continueChange",
         "title": "Continue in Claude Code",
-        "category": "uspec"
-      },
-      {
-        "command": "uspec.claude.implementChange",
-        "title": "Implement in Claude Code",
         "category": "uspec"
       }
     ],
@@ -530,11 +548,6 @@
           "group": "2_claude@1"
         },
         {
-          "command": "uspec.claude.implementChange",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
-          "group": "2_claude@2"
-        },
-        {
           "command": "uspec.change.setActive",
           "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;active/)",
           "group": "3_change@1"
@@ -620,16 +633,6 @@
           "group": "3_context@2"
         },
         {
-          "command": "uspec.agents.runImplementer",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode;pending;ready;idle/",
-          "group": "inline@1"
-        },
-        {
-          "command": "uspec.agents.runImplementer",
-          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode;pending;ready;idle/",
-          "group": "1_agents@1"
-        },
-        {
           "command": "uspec.change.markDone",
           "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode;pending/",
           "group": "2_change@1"
@@ -643,6 +646,56 @@
           "command": "uspec.context.copy",
           "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode/",
           "group": "3_context@2"
+        },
+        {
+          "command": "uspec.agents.runImpact",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact;idle/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.runImpact",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact;idle/",
+          "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.change.openChangeMd",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact/",
+          "group": "2_change@1"
+        },
+        {
+          "command": "uspec.claude.continueChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.impact/",
+          "group": "2_change@2"
+        },
+        {
+          "command": "uspec.agents.runPlanner",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.nextPlan;idle/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.runPlanner",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.nextPlan;idle/",
+          "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.agents.runImplementer",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.plan;pending;ready;idle/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.runImplementer",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.plan;pending;.*;idle/",
+          "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.change.openPlan",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.plan/",
+          "group": "2_change@1"
+        },
+        {
+          "command": "uspec.change.addDocument",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.doc/ && viewItem =~ /;active/ && !(viewItem =~ /;inChange/)",
+          "group": "5_change@3"
         },
         {
           "command": "uspec.agents.approve",
@@ -767,7 +820,7 @@
         "uspec.agents.model": {
           "type": "string",
           "default": "",
-          "description": "Model for writer, implementer and reviewer runs (an alias such as `opus` or a full model name). Empty uses Claude Code's default."
+          "description": "Model for impact, writer, planner, implementer and reviewer runs (an alias such as `opus` or a full model name). Empty uses Claude Code's default."
         },
         "uspec.agents.triageModel": {
           "type": "string",
@@ -794,6 +847,11 @@
           ],
           "default": "user-visible",
           "description": "Which writer updates wait for your approval before they are recorded."
+        },
+        "uspec.agents.approvePlans": {
+          "type": "boolean",
+          "default": true,
+          "description": "Wait for you to read the plans a planner writes before implementing them."
         },
         "uspec.agents.implementerAllowedTools": {
           "type": "array",

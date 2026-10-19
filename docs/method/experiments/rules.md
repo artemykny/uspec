@@ -9,14 +9,14 @@ An **experiment** is code tried out directly, on a branch, with no change and no
 **Two endings.** When the experiment is over, it is either:
 
 - **dropped:** the branch is deleted and the spec is untouched;
-- **kept:** it becomes a [change](../changes/). An agent reads the code diff, finds the highest node it affects, and proposes the edits to that node's documents. From there it is an ordinary change: the edits propagate, candidates are triaged and written, and the tree is validated.
+- **kept:** it becomes a [change](../changes/). An agent reads the code diff and writes `change.md` from it with the user: what the new behaviour is, with a worked example. From there it is an ordinary change: impact finds the starting documents, the edits propagate, candidates are triaged and written, and the tree is validated.
 
-**Implement checks instead of writing.** In a kept experiment, each node under `implementation` already has its code. Its implementer verifies the existing code against the new spec and fixes what doesn't match, instead of writing it.
+**Implement checks instead of writing.** In a kept experiment, the nodes under `implementation` already have their code. The plans say so, and each implementer verifies the existing code against the new spec and fixes what doesn't match, instead of writing it.
 
 **No merge without a spec change.** Experiment code can't be merged until a change backs it, because it is drift until then.
 
-**Closer review.** A spec written from code tends to describe what the code does, accidents included, rather than what was intended. The user reviews the documents of a kept experiment more closely than those of a change that started in the spec.
+**Closer review.** A spec written from code tends to describe what the code does, accidents included, rather than what was intended. The user reviews `change.md` and the documents of a kept experiment more closely than those of a change that started in the spec.
 
 ## Example
 
-To see whether a 30-day refund window hurts fraud rates, a developer changes the constant in the `payments` service's code on a branch. The drift check flags the change. The numbers look good, so the experiment is kept: an agent reads the diff, finds that the highest node it affects is `product/support/refunds`, and proposes changing the window in its `rules.md`. The user approves, and the change runs as in [changes](../changes/#example). When `payments` is implemented, its code already says 30 days, so its implementer only verifies it; the screens, which the experiment never touched, are updated as usual.
+To see whether a 30-day refund window hurts fraud rates, a developer changes the constant in the `payments` service's code on a branch. The drift check flags the change. The numbers look good, so the experiment is kept: an agent reads the diff and writes `change.md` with the user, with the worked example of a refund requested on day 20. Impact finds `product/support/refunds/rules.md`, and the change runs as in [changes](../changes/#example). When `payments` is implemented, its code already says 30 days, so its implementer only verifies it; the screen, which the experiment never touched, is updated as usual.

@@ -13,7 +13,7 @@ uspec node remove <path>
 **`new`** creates a node at `<path>`, of type `<type>`:
 
 1. Checks the place: no node exists at `<path>`, the type exists, the parent node exists and its type lists `<type>` among its children. The name may not start with `.` and may not be `<document>-extra` for a document of the parent's type, since that directory holds the parent's extra files. The root can't be created this way; `init` creates it.
-2. Checks each `--derives-from` node: it exists and its type is in the new type's `derives_from`. A new node can't close a cycle, since nothing links to it yet.
+2. Checks each `--derives-from` link, a node, a document or a section as in [links](../../method/links/): its node exists and its type is in the new type's `derives_from`, and a document or section it narrows to is valid as `validate` checks it. A new node can't close a cycle, since nothing links to it yet.
 3. Checks code paths: a type with `code: true` needs at least one `--code`; any other type takes none. Code paths are stored as given and not checked against the repository.
 4. Creates the directory and `node.yaml` with `type`, `derives_from` and `code` (empty fields left out), and each of the type's documents as a copy of its template body, without the frontmatter. Optional documents are created too; a document whose template is missing is skipped.
 
@@ -21,9 +21,9 @@ uspec node remove <path>
 
 1. Checks that `<from>` exists and isn't the root, that `<to>` doesn't exist and isn't inside `<from>`, and that the node's type may sit under the new parent, with the same name rules as `new`.
 2. Moves the directory.
-3. Rewrites every link in the tree that points to the moved node or a node in its subtree, nodes inside the subtree included. The moved node's own links are kept as they are.
+3. Rewrites every link in the tree that points to the moved node or a node in its subtree, nodes inside the subtree included, keeping the document and section it narrows to. The moved node's own links are kept as they are.
 
-**`remove`** deletes the node at `<path>` and its subtree. The root can't be removed. It refuses while a node outside the subtree links to the node or to any node in its subtree; links within the subtree don't block it.
+**`remove`** deletes the node at `<path>` and its subtree. The root can't be removed. It refuses while a node outside the subtree links to the node or to any node in its subtree, or to a document or section of one; links within the subtree don't block it.
 
 ## Output
 
@@ -77,6 +77,7 @@ Every check above that fails stops the command before it changes anything, with 
 | `new`, `move` | `` `<name>` is reserved for the extra files of <document>.md `` |
 | `new`, `move` | ``invalid node name `<name>` `` |
 | `new` | `can't link to <node>: it doesn't exist` |
+| `new` | `can't link to <link>: <problem>`, for a document or section that isn't valid, with the problem as `validate` words it |
 | `new` | ``can't link to <node>: type `<type>` isn't in `<type>`'s derives_from`` |
 | `new` | ``type `<type>` has code: true; give its code paths with --code`` |
 | `new` | ``type `<type>` doesn't have code: true, so the node can't list code paths`` |

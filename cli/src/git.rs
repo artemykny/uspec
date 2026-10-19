@@ -45,3 +45,9 @@ pub fn dirty(root: &Path, paths: &[String]) -> bool {
     args.extend(paths.iter().map(String::as_str));
     git(root, &args).is_ok_and(|o| !o.is_empty())
 }
+
+/// A file's content at `commit`, by its path relative to `root`; `None` if it didn't exist.
+pub fn show(root: &Path, commit: &str, path: &str) -> Option<String> {
+    let out = Command::new("git").current_dir(root).args(["show", &format!("{commit}:./{path}")]).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
+}

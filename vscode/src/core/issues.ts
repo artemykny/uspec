@@ -89,6 +89,9 @@ export function locateInFile(text: string | undefined, message: string): { line:
     return keyLine(text, 'type') ?? wholeLine(text, 0);
   }
   if (/^lists code paths, but/.test(message)) return keyLine(text, 'code') ?? wholeLine(text, 0);
+  if ((m = message.match(/^invalid link `([^`]+)`/))) {
+    return findToken(text, m[1], /^derives_from:/) ?? keyLine(text, 'derives_from') ?? wholeLine(text, 0);
+  }
   if ((m = message.match(/^links to (\S+?)(,| of type)/))) {
     return findToken(text, m[1], /^derives_from:/) ?? keyLine(text, 'derives_from') ?? wholeLine(text, 0);
   }

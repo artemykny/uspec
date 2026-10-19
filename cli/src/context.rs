@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use crate::change::Change;
 use crate::git;
 use crate::project::{show_node, Project};
+use crate::sections::split_ref;
 use crate::tree::{doc_key, Node, Tree};
 use crate::types::Types;
 use crate::{columns, Out};
@@ -17,11 +18,56 @@ struct Section {
 
 struct File {
     path: String,
+    /// The anchor of the one section of the document that is read.
+    section: Option<String>,
     note: Option<String>,
 }
 
 fn file(path: String) -> File {
-    File { path, note: None }
+    File { path, section: None, note: None }
+}
+
+impl File {
+    fn shown(&self) -> String {
+        match &self.section {
+            Some(s) => format!("{}#{s}", self.path),
+            None => self.path.clone(),
+        }
+    }
+}
+
+/// Upstream documents in the order they are first needed, each whole or by its sections.
+#[derive(Default)]
+struct Needs {
+    /// (node path, document id) → `None` for the whole document, else its sections in order.
+    docs: indexmap::IndexMap<(String, String), Option<Vec<String>>>,
+}
+
+impl Needs {
+    fn add(&mut self, node: &str, doc: &str, section: Option<&str>) {
+        let e = self.docs.entry((node.to_string(), doc.to_string())).or_insert_with(|| Some(vec![]));
+        match (e.as_mut(), section) {
+            (Some(_), None) => *e = None,
+            (Some(secs), Some(s)) if !secs.iter().any(|x| x == s) => secs.push(s.to_string()),
+            _ => {}
+        }
+    }
+
+    fn files(&self, project: &Project, tree: &Tree) -> Vec<File> {
+        let mut out = vec![];
+        for ((node, doc), secs) in &self.docs {
+            let Some(n) = tree.get(node) else { continue };
+            let path = project.spec_file(&doc_key(node, doc));
+            match secs {
+                None => out.push(file(path)),
+                Some(secs) => out.extend(secs.iter().map(|s| File { path: path.clone(), section: Some(s.clone()), note: None })),
+            }
+            if n.extras.contains(doc) {
+                out.push(file(project.spec_file(&crate::tree::join(node, &format!("{doc}-extra/")))));
+            }
+        }
+        out
+    }
 }
 
 /// The document files of a node (with their -extra folders) for the given ids.
@@ -71,13 +117,20 @@ fn build(
         .into_iter()
         .flat_map(|a| doc_files(project, a, &a.docs.iter().collect::<Vec<_>>()))
         .collect();
-    // Exposed documents of linked nodes.
-    let mut upstream: Vec<File> = vec![];
-    for link in &node.links {
-        let Some(l) = tree.get(link) else { continue };
+    // What the links name: the exposed documents of a linked node, or one document or section of it.
+    let mut needs = Needs::default();
+    for link in &node.deps {
+        let Some(l) = tree.get(&link.node) else { continue };
         let lt = l.type_id.as_deref().unwrap_or("");
-        let exposed: Vec<&String> = l.docs.iter().filter(|d| types.template(lt, d).is_none_or(|t| t.exposed)).collect();
-        upstream.extend(doc_files(project, l, &exposed));
+        match &link.doc {
+            None => {
+                for d in l.docs.iter().filter(|d| types.template(lt, d).is_none_or(|t| t.exposed)) {
+                    needs.add(&l.path, d, None);
+                }
+            }
+            Some(d) if l.docs.contains(d) => needs.add(&l.path, d, link.section.as_deref()),
+            Some(_) => {}
+        }
     }
 
     let mut sections: Vec<Section> = vec![];
@@ -93,24 +146,25 @@ fn build(
                     targets.push(id.clone());
                 }
             }
-            // Same-node documents any written document derives from, except the written ones.
-            let deps: Vec<&String> = node
-                .docs
-                .iter()
-                .filter(|d| !targets.contains(d))
-                .filter(|d| targets.iter().any(|id| types.template(type_id, id).is_some_and(|tpl| tpl.derives_from.contains(d))))
-                .collect();
-            upstream.extend(doc_files(project, node, &deps));
+            // Same-node documents, or sections of them, that any written document derives from, except the written ones.
+            for id in &targets {
+                for dep in types.template(type_id, id).map(|t| t.derives_from.as_slice()).unwrap_or_default() {
+                    let (did, sec) = split_ref(dep);
+                    if node.docs.iter().any(|d| d == did) && !targets.iter().any(|t| t == did) {
+                        needs.add(&path, did, sec);
+                    }
+                }
+            }
             sections.push(Section { name: "document", files: doc_files(project, node, &targets.iter().collect::<Vec<_>>()) });
             sections.push(Section { name: "ancestors", files: ancestors });
-            sections.push(Section { name: "upstream", files: upstream });
+            sections.push(Section { name: "upstream", files: needs.files(project, tree) });
         }
         (false, true) => {
             if !t.code {
                 bail!("{} has no code paths: its type `{type_id}` doesn't have code: true", show_node(&path));
             }
             sections.push(Section { name: "ancestors", files: ancestors });
-            sections.push(Section { name: "upstream", files: upstream });
+            sections.push(Section { name: "upstream", files: needs.files(project, tree) });
             sections.push(Section { name: "documents", files: doc_files(project, node, &node.docs.iter().collect::<Vec<_>>()) });
         }
         _ => bail!("give either --document <id> or --implement"),
@@ -124,7 +178,7 @@ fn build(
         for u in c.updated() {
             let p = project.spec_file(u);
             if listed.contains(&p) && !written.contains(u) {
-                files.push(File { path: p, note: Some(format!("diff since {}", git::short(&c.status.baseline))) });
+                files.push(File { path: p, section: None, note: Some(format!("diff since {}", git::short(&c.status.baseline))) });
             }
         }
         sections.push(Section { name: "change", files });
@@ -165,7 +219,7 @@ pub fn cmd_context(
     if out.json {
         let mut files = serde_json::Map::new();
         for s in &ctx.sections {
-            let v: Vec<Value> = s.files.iter().map(|f| json!({ "path": f.path, "note": f.note })).collect();
+            let v: Vec<Value> = s.files.iter().map(|f| json!({ "path": f.path, "section": f.section, "note": f.note })).collect();
             files.insert(s.name.to_string(), Value::Array(v));
         }
         return out.print(json!({
@@ -190,7 +244,7 @@ pub fn cmd_context(
         }
         println!("{}:", s.name);
         let rows: Vec<(String, String)> =
-            s.files.iter().map(|f| (f.path.clone(), f.note.clone().unwrap_or_default())).collect();
+            s.files.iter().map(|f| (f.shown(), f.note.clone().unwrap_or_default())).collect();
         print!("{}", columns(&rows, "  "));
     }
     Ok(())

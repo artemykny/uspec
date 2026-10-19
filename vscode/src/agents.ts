@@ -10,21 +10,28 @@ import {
   formatCost,
   formatDuration,
   fromExperiment,
+  impactInput,
+  implementerInput,
   modelFor,
+  parseImpact,
   parseImplementer,
+  parsePlanner,
   parseReview,
   parseTriage,
   parseWriter,
   permissions,
+  plannerInput,
   PROMPTS,
   triageInput,
   writerContextArgs,
   type Permissions,
   type Role,
+  type StartingDocument,
   type WriterResult,
 } from './core/agents';
 import { startClaude, type ClaudeResult } from './core/claude';
 import type { NextJson, SetJson } from './core/model';
+import { isTemplateLeft } from './core/templates';
 import { join, nodeKey, showNode, splitDoc } from './core/paths';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
@@ -65,6 +72,12 @@ export class AgentRun {
   logUri!: vscode.Uri;
   /** A writer's documents, in the order given, each with its own result. */
   docs: WriterDoc[] = [];
+  /** An impact run's starting documents, waiting for the user to keep them. */
+  starting: StartingDocument[] = [];
+  /** An implementer's plan nodes. */
+  nodes: string[] = [];
+  /** The plan files a planner wrote. */
+  plans: string[] = [];
   /** What a writer added after its results. */
   notes = '';
   kill?: () => void;
@@ -76,13 +89,14 @@ export class AgentRun {
     readonly p: Project,
     readonly change: string | undefined,
     readonly role: Role,
-    /** The node path (implementer, reviewer, writer) or `batch` (triage) the run works on. */
+    /** The node path (reviewer, writer), the plan id (implementer), `batch` (triage) or `change` (impact, planner) the run works on. */
     readonly item: string,
     private readonly label?: string,
   ) {}
 
   get title(): string {
-    return `${this.role}: ${this.label ?? (this.role === 'triage' ? this.item : showNode(this.item))}`;
+    const what = this.label ?? (this.role === 'triage' || this.role === 'impact' || this.role === 'planner' ? this.item : this.role === 'implementer' ? `plan ${this.item}` : showNode(this.item));
+    return `${this.role}: ${what}`;
   }
 
   get active(): boolean {
@@ -288,6 +302,84 @@ export class AgentManager implements vscode.Disposable {
     }
   }
 
+  /** Offers to resolve what a run couldn't with `uspec-spec` in Claude Code. */
+  private offerSession(run: AgentRun, message: string): void {
+    void vscode.window.showWarningMessage(message, 'Continue in Claude Code', 'Show Log').then((a) => {
+      if (a === 'Show Log') void this.showLog(run);
+      if (a === 'Continue in Claude Code') void vscode.commands.executeCommand('uspec.claude.continueChange', { p: run.p, name: run.change });
+    });
+  }
+
+  // --- Impact ------------------------------------------------------------------------------------
+
+  /** Finds the starting documents of a change that has none; they wait for the user to keep them. */
+  async runImpact(p: Project, change: string): Promise<AgentRun | undefined> {
+    if (this.isBusy(p, change, 'change', 'impact')) return undefined;
+    const changeMd = `.uspec/changes/${change}/change.md`;
+    if (isTemplateLeft((await readText(p.abs(changeMd))) ?? '')) {
+      const pick = await vscode.window.showWarningMessage(
+        `${change}: change.md still has template guidance. The starting documents are found from it, so describe the change first.`,
+        { modal: true },
+        'Find Anyway',
+        'Write in Claude Code',
+      );
+      if (pick === 'Write in Claude Code') void vscode.commands.executeCommand('uspec.claude.continueChange', { p, name: change });
+      if (pick !== 'Find Anyway') return undefined;
+    }
+    const run = this.newRun(p, change, 'impact', 'change', 'starting documents');
+    return this.slotsFor(p, change).run(() =>
+      this.guard(run, async () => {
+        if (run.stopped) return run;
+        const tree = await this.manager.text(p, ['tree']);
+        const res = await this.execute(run, impactInput(changeMd, tree), permissions('impact'));
+        if (!res) return run;
+        const exists = (key: string) => {
+          const { node, doc } = splitDoc(key);
+          return Boolean(p.nodes.get(node)?.documents.includes(doc));
+        };
+        const parsed = parseImpact(res.text, exists, p.specRoot);
+        if (parsed.unknown.length) this.append(run, `ignored, not documents of the tree: ${parsed.unknown.join(', ')}`);
+        if (!parsed.documents.length) return this.finish(run, 'error', 'no starting documents', parsed.notes || 'The result names no document of the tree.');
+        run.starting = parsed.documents;
+        const n = parsed.documents.length;
+        const detail = [parsed.documents.map((d) => `${d.document}: ${d.reason}`).join('\n'), parsed.notes].filter(Boolean).join('\n\n');
+        this.finish(run, 'needs-approval', `${n} starting document${n === 1 ? '' : 's'}`, detail);
+        void vscode.window
+          .showInformationMessage(`${change}: ${n} starting document${n === 1 ? '' : 's'} found${parsed.notes ? `. Notes: ${parsed.notes}` : ''}. Review them to start the change.`, 'Review', 'Show Log')
+          .then((a) => (a === 'Review' ? this.approve(run) : a === 'Show Log' ? this.showLog(run) : undefined));
+        return run;
+      }),
+    );
+  }
+
+  /** Lets the user keep the starting documents they want, and records them as affected. */
+  private async approveImpact(run: AgentRun): Promise<void> {
+    const picks = await vscode.window.showQuickPick(
+      run.starting.map((d) => ({ label: d.document, detail: d.reason, picked: true, d })),
+      { canPickMany: true, placeHolder: `Starting documents of ${run.change}: keep the ones the change starts at`, ignoreFocusOut: true },
+    );
+    if (!picks) return;
+    await this.keepStarting(run, picks.map((x) => x.d.document));
+  }
+
+  /** Records the starting documents the user kept as affected, with their reasons; none kept rejects them all. */
+  async keepStarting(run: AgentRun, keep: string[]): Promise<void> {
+    if (run.state !== 'needs-approval' || run.role !== 'impact') return;
+    const kept = run.starting.filter((d) => keep.includes(d.document));
+    if (!kept.length) return this.rejectImpact(run);
+    for (const d of kept) {
+      await this.manager.mutate<SetJson>(run.p, ['change', 'set', run.change!, d.document, 'affected', '--reason', d.reason]);
+      this.append(run, `recorded ${d.document}: affected — ${d.reason}`);
+    }
+    const dropped = run.starting.length - kept.length;
+    this.finish(run, 'recorded', `${kept.length} starting document${kept.length === 1 ? '' : 's'}${dropped ? `, ${dropped} dropped` : ''}`, run.detail);
+    this.offerToContinue(run, `The starting documents of ${run.change}`);
+  }
+
+  private rejectImpact(run: AgentRun): void {
+    this.finish(run, 'rejected', 'nothing recorded', run.detail);
+  }
+
   // --- Triage ------------------------------------------------------------------------------------
 
   async runTriage(p: Project, change: string, next?: NextJson): Promise<AgentRun | undefined> {
@@ -432,9 +524,7 @@ export class AgentManager implements vscode.Disposable {
   /** Tells the user what a writer left for them: blocked documents and updates to approve. */
   private notifyWriter(run: AgentRun): void {
     const change = run.change!;
-    for (const d of run.docs.filter((x) => x.state === 'blocked')) {
-      void vscode.window.showWarningMessage(`Writer of ${d.key} is blocked: ${d.detail}`, 'Show Log').then((a) => a && this.showLog(run));
-    }
+    for (const d of run.docs.filter((x) => x.state === 'blocked')) this.offerSession(run, `Writer of ${d.key} is blocked: ${d.detail}`);
     const waiting = run.docs.filter((d) => d.state === 'needs-approval');
     if (waiting.length === 1) {
       const [d] = waiting;
@@ -453,8 +543,14 @@ export class AgentManager implements vscode.Disposable {
     return run.docs.filter((d) => d.state === 'needs-approval' && (key === undefined || d.key === key));
   }
 
-  /** Approves a writer's update of one document, or of every document of the run that waits. */
+  /** Approves a run that waits: the starting documents, the plans, or a writer's update of one document or every one that waits. */
   async approve(run: AgentRun, key?: string): Promise<void> {
+    if (run.state === 'needs-approval' && run.role === 'impact') return this.approveImpact(run);
+    if (run.state === 'needs-approval' && run.role === 'planner') {
+      this.finish(run, 'recorded', run.outcome.replace(/ to review$/, ''), run.detail);
+      this.offerToContinue(run, `The plans of ${run.change}`);
+      return;
+    }
     const docs = this.waitingDocs(run, key);
     if (!docs.length) return;
     for (const d of docs) {
@@ -475,12 +571,18 @@ export class AgentManager implements vscode.Disposable {
     const change = run.change;
     if (!change || this.isLooping(run.p, change) || this.runsOf(run.p, change).some((r) => r.active)) return;
     void vscode.window
-      .showInformationMessage(`${what} ${what.includes(', ') ? 'are' : 'is'} recorded. Continue running agents on ${change}?`, 'Run Agents')
+      .showInformationMessage(`${what} ${what.includes(', ') || /^The /.test(what) ? 'are' : 'is'} recorded. Continue running agents on ${change}?`, 'Run Agents')
       .then((a) => a && this.runChange(run.p, change));
   }
 
-  /** Puts a document back as it was before the writer, or every document of the run that waits; they stay affected. */
+  /** Rejects a run that waits: records no starting document, deletes the plans, or puts a writer's document(s) back as they were. */
   async reject(run: AgentRun, key?: string): Promise<void> {
+    if (run.state === 'needs-approval' && run.role === 'impact') return this.rejectImpact(run);
+    if (run.state === 'needs-approval' && run.role === 'planner') {
+      for (const f of run.plans) await fs.promises.rm(run.p.abs(f), { force: true });
+      this.finish(run, 'rejected', 'plans deleted', run.detail);
+      return;
+    }
     const docs = this.waitingDocs(run, key);
     if (!docs.length) return;
     for (const d of docs) {
@@ -508,33 +610,103 @@ export class AgentManager implements vscode.Disposable {
     }
   }
 
-  // --- Implementer -------------------------------------------------------------------------------
+  // --- Planner ---------------------------------------------------------------------------------
 
-  async runImplementer(p: Project, change: string, node: string): Promise<AgentRun | undefined> {
-    if (this.isBusy(p, change, node, 'implementer')) return undefined;
-    const run = this.newRun(p, change, 'implementer', node);
+  /** Writes the plans for the nodes no plan holds; they wait for the user with `uspec.agents.approvePlans`. */
+  async runPlanner(p: Project, change: string, next?: NextJson): Promise<AgentRun | undefined> {
+    if (this.isBusy(p, change, 'change', 'planner')) return undefined;
+    next ??= await this.manager.json<NextJson>(p, ['change', 'next', change]);
+    const plan = next.plan;
+    if (!plan) {
+      void vscode.window.showInformationMessage(`${change}: nothing to plan.`);
+      return undefined;
+    }
+    const run = this.newRun(p, change, 'planner', 'change', `${plan.nodes.length} node${plan.nodes.length === 1 ? '' : 's'}`);
     return this.slotsFor(p, change).run(() =>
       this.guard(run, async () => {
         if (run.stopped) return run;
-        const input = await this.manager.text(p, ['context', showNode(node), '--implement', '--change', change]);
+        const contexts = await Promise.all(
+          plan.nodes.map(async (node) => ({ node, context: await this.manager.text(p, ['context', node, '--implement', '--change', change]) })),
+        );
+        const existing = (p.change(change)?.plans ?? []).map((x) => x.path);
+        const before = new Set(existing);
+        const input = plannerInput({ changeMd: `.uspec/changes/${change}/change.md`, dir: plan.dir, nodes: plan.nodes, existing, contexts });
+        const res = await this.execute(run, input, permissions('planner', { plansDir: plan.dir }));
+        if (!res) return run;
+        const result = parsePlanner(res.text);
+        if (result.kind === 'invalid') return this.finish(run, 'error', 'unreadable result', 'Expected `planned` or `failed`.');
+        if (result.kind === 'failed') {
+          this.offerSession(run, `Planner of ${change} failed: ${result.detail.split('\n')[0]}`);
+          return this.finish(run, 'failed', 'failed', result.detail);
+        }
+        await this.manager.load(p);
+        const c = p.change(change);
+        run.plans = (c?.plans ?? []).map((x) => x.path).filter((f) => !before.has(f));
+        const errors = c?.next?.plan_errors ?? [];
+        const left = c?.next?.plan?.nodes ?? [];
+        const detail = [
+          run.plans.join('\n'),
+          errors.length ? `Plan errors:\n${errors.map((e) => `${e.plan ? `${e.plan}: ` : ''}${e.message}`).join('\n')}` : '',
+          left.length ? `Not planned: ${left.join(', ')}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+        if (!run.plans.length) return this.finish(run, 'error', 'no plans written', detail || 'The planner wrote no plan file.');
+        if (errors.length) {
+          void vscode.window.showWarningMessage(`${change}: the plans have errors: ${errors[0].message}`, 'Show Log').then((a) => a && this.showLog(run));
+          return this.finish(run, 'error', 'plan errors', detail);
+        }
+        const n = run.plans.length;
+        if (this.config().get<boolean>('agents.approvePlans', true)) {
+          void vscode.window
+            .showInformationMessage(`${change}: ${n} plan${n === 1 ? '' : 's'} written. Read ${n === 1 ? 'it' : 'them'}, then approve to implement.`, 'Open Plans', 'Approve')
+            .then(async (a) => {
+              if (a === 'Open Plans') for (const f of run.plans) await vscode.window.showTextDocument(p.uriOf(f), { preview: false });
+              if (a === 'Approve') await this.approve(run);
+            });
+          return this.finish(run, 'needs-approval', `${n} plan${n === 1 ? '' : 's'} to review`, detail);
+        }
+        return this.finish(run, 'recorded', `${n} plan${n === 1 ? '' : 's'}`, detail);
+      }),
+    );
+  }
+
+  // --- Implementer -------------------------------------------------------------------------------
+
+  /** Implements one plan: one run for all its nodes, which are recorded as done together. */
+  async runImplementer(p: Project, change: string, plan: string): Promise<AgentRun | undefined> {
+    if (this.isBusy(p, change, plan, 'implementer')) return undefined;
+    const info = p.change(change)?.plans.find((x) => x.plan === plan) ?? (await this.manager.json<NextJson>(p, ['change', 'next', change])).implement.find((x) => x.plan === plan);
+    if (!info) {
+      void vscode.window.showWarningMessage(`${change} has no plan ${plan}.`);
+      return undefined;
+    }
+    const run = this.newRun(p, change, 'implementer', plan);
+    run.nodes = info.nodes;
+    return this.slotsFor(p, change).run(() =>
+      this.guard(run, async () => {
+        if (run.stopped) return run;
+        const contexts = await Promise.all(
+          info.nodes.map(async (node) => ({ node, context: await this.manager.text(p, ['context', node, '--implement', '--change', change]) })),
+        );
         const changeMd = (await readText(p.abs(`.uspec/changes/${change}/change.md`))) ?? '';
         const mode = fromExperiment(changeMd) ? 'Mode: check' : 'Mode: implement';
         const perms = permissions('implementer', {
-          codePaths: codePaths(p, node),
+          codePaths: info.nodes.flatMap((n) => codePaths(p, nodeKey(n))),
           implementerAllowed: this.config().get<string[]>('agents.implementerAllowedTools', ['Bash']),
         });
-        const res = await this.execute(run, input, perms, mode);
+        const res = await this.execute(run, implementerInput(info.path, contexts), perms, mode);
         if (!res) return run;
         const result = parseImplementer(res.text);
         switch (result.kind) {
-          case 'done':
-            await this.manager.mutate<SetJson>(p, ['change', 'set', change, showNode(node), 'done']);
+          case 'done': {
+            const pending = info.nodes.filter((n) => p.change(change)?.impl.get(nodeKey(n)) !== 'done');
+            for (const n of pending) await this.manager.mutate<SetJson>(p, ['change', 'set', change, n, 'done']);
             return this.finish(run, 'recorded', 'done', result.detail);
+          }
           case 'gap':
           case 'failed':
-            void vscode.window
-              .showWarningMessage(`Implementer of ${showNode(node)}: ${result.kind}. ${result.detail.split('\n')[0]}`, 'Show Log')
-              .then((a) => a && this.showLog(run));
+            this.offerSession(run, `Implementer of plan ${plan}: ${result.kind}. ${result.detail.split('\n')[0]}`);
             return this.finish(run, result.kind, result.kind, result.detail);
           default:
             return this.finish(run, 'error', 'unreadable result', 'Expected `done`, `gap` or `failed`.');
@@ -584,27 +756,38 @@ export class AgentManager implements vscode.Disposable {
       for (let round = 1; !ctl.stopped; round++) {
         const next = await this.manager.json<NextJson>(p, ['change', 'next', change]);
         const jobs: Promise<AgentRun | undefined>[] = [];
-        if (next.triage && !this.isBusy(p, change, 'batch')) jobs.push(this.runTriage(p, change, next));
-        // One writer per node, on its documents that aren't already written or waiting for approval.
-        for (const w of next.write) {
-          const node = nodeKey(w.node);
-          const docs = w.documents.map((d) => d.document).filter((d) => !this.isBusy(p, change, d));
-          if (docs.length && !this.writing(p, change, node)) jobs.push(this.runWriter(p, change, node, docs));
-        }
-        if (!next.triage && !next.write.length) {
-          for (const n of next.implement) if (!this.isBusy(p, change, nodeKey(n.node), 'implementer')) jobs.push(this.runImplementer(p, change, nodeKey(n.node)));
+        // The change's steps in order: impact; triage and write; plan; implement.
+        if (next.impact) {
+          if (!this.isBusy(p, change, 'change', 'impact')) jobs.push(this.runImpact(p, change));
+        } else if (next.triage || next.write.length) {
+          if (next.triage && !this.isBusy(p, change, 'batch')) jobs.push(this.runTriage(p, change, next));
+          // One writer per node, on its documents that aren't already written or waiting for approval.
+          for (const w of next.write) {
+            const node = nodeKey(w.node);
+            const docs = w.documents.map((d) => d.document).filter((d) => !this.isBusy(p, change, d));
+            if (docs.length && !this.writing(p, change, node)) jobs.push(this.runWriter(p, change, node, docs));
+          }
+        } else if (next.plan_errors.length) {
+          const e = next.plan_errors[0];
+          reason = `the plans have errors (${e.plan ? `${e.plan}: ` : ''}${e.message})`;
+          break;
+        } else if (next.plan) {
+          if (!this.isBusy(p, change, 'change', 'planner')) jobs.push(this.runPlanner(p, change, next));
+        } else {
+          for (const pl of next.implement) if (!this.isBusy(p, change, pl.plan, 'implementer')) jobs.push(this.runImplementer(p, change, pl.plan));
         }
         if (!jobs.length) {
           const waiting = this.waiting(p, change);
           reason = waiting
-            ? `${waiting} update${waiting === 1 ? '' : 's'} wait${waiting === 1 ? 's' : ''} for your approval`
-            : next.triage || next.write.length || next.implement.length
+            ? `${waiting} item${waiting === 1 ? '' : 's'} wait${waiting === 1 ? 's' : ''} for your approval`
+            : next.impact || next.triage || next.write.length || next.plan || next.implement.length
               ? 'the ready items are already running'
               : 'nothing is ready';
           break;
         }
         this.manager.output.appendLine(`${change}: round ${round}, ${jobs.length} agent${jobs.length === 1 ? '' : 's'}`);
         const runs = (await Promise.all(jobs)).filter((r): r is AgentRun => Boolean(r));
+        if (!runs.length) break;
         const stuck = runs.filter((r) => NEEDS_USER.includes(r.state));
         if (stuck.length) {
           reason = stuck.map((r) => `${r.title}: ${r.state}`).join('; ');

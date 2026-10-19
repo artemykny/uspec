@@ -7,7 +7,9 @@ import * as vscode from 'vscode';
 import { onPath } from './core/cli';
 import type { Project } from './projects';
 
-const SKILLS = ['uspec-spec', 'uspec-implement', 'uspec-review'];
+const SKILLS = ['uspec-spec', 'uspec-review'];
+/** Skills earlier versions installed that no longer exist. */
+const REMOVED = ['uspec-implement'];
 
 /** Claude Code: the setting, `claude` on the PATH, the usual install places, then the Claude Code extension's binary. */
 export function findClaude(): string | undefined {
@@ -83,6 +85,7 @@ export async function installSkills(p: Project, extensionPath: string): Promise<
     );
     if (ok !== 'Replace') return false;
   }
+  for (const s of REMOVED) fs.rmSync(path.join(to, s), { recursive: true, force: true });
   for (const s of SKILLS) {
     const src = path.join(from, s);
     if (!fs.existsSync(src)) continue;

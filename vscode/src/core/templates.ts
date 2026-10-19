@@ -42,3 +42,18 @@ export function leftoverGuidance(doc: string, templateBody: string): number[] {
   });
   return out;
 }
+
+/** The guidance lines of the change template that `uspec change new` writes into `change.md`. */
+const CHANGE_GUIDANCE = [
+  '# <Title: the change in a few words>',
+  '<The problem, and who has it.>',
+  '<The new behaviour, rule by rule: every case it touches, and what stays as it is. The constraints that apply.>',
+  '<What this change doesn’t do.>',
+  "<What this change doesn't do.>",
+];
+
+/** Whether `change.md` is empty or still has a guidance line of the change template. */
+export function isTemplateLeft(changeMd: string): boolean {
+  const lines = changeMd.split(/\r?\n/).map((l) => l.trim());
+  return !changeMd.trim() || lines.some((l) => CHANGE_GUIDANCE.includes(l) || l.startsWith('<One or more concrete scenarios'));
+}

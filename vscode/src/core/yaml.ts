@@ -23,7 +23,8 @@ export function listItems(lines: string[], key: string): string[] {
   }
   const out: string[] = [];
   for (let j = i + 1; j < lines.length; j++) {
-    const m = lines[j].match(/^\s+-\s*(.*?)\s*(#.*)?$/);
+    // A comment starts at a `#` after whitespace: `rules.md#refund-window` is one value.
+    const m = lines[j].match(/^\s+-\s*(.*?)(?:\s+#.*)?\s*$/);
     if (m) {
       if (m[1]) out.push(unquote(m[1]));
       continue;
