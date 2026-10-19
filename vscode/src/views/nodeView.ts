@@ -38,7 +38,9 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
   constructor(private readonly manager: ProjectManager) {
     this.sub = manager.onDidChange(() => {
       this.contexts.clear();
-      if (this.followedFile) this.target = this.fileTarget(this.followedFile);
+      // A followed file that belongs to no node leaves the target on its last node, while that node exists.
+      const followed = this.followedFile && this.fileTarget(this.followedFile);
+      if (followed) this.target = followed;
       else if (this.target && (!manager.projects.includes(this.target.p) || !this.target.p.nodes.has(this.target.node))) this.target = undefined;
       this.emitter.fire(undefined);
     });
@@ -58,9 +60,10 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
     this.emitter.fire(undefined);
   }
 
-  /** Re-evaluate ownership on model changes as well as editor changes. */
+  /** Re-evaluate ownership on model changes as well as editor changes; a file of no node keeps the target. */
   followFile(uri: vscode.Uri): void {
-    this.setTarget(this.fileTarget(uri));
+    const t = this.fileTarget(uri);
+    if (t) this.setTarget(t);
     this.followedFile = uri;
   }
 

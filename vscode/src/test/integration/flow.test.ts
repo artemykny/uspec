@@ -131,15 +131,14 @@ describe('uspec extension', () => {
   it('renders ordered overview sections and binds context actions to their target', async () => {
     const target = { p, node: 'system/services/payments', doc: 'logic' };
     api.nodeView.setTarget(target);
-    const contexts = await Promise.all((['document', 'implement'] as const).map(async mode => ({ mode, value: await api.nodeView.context(mode) })));
-    const { html, actions } = renderOverview(target, contexts, 'test-nonce', 1);
-    let previous = html.indexOf('logic.md template');
+    const { html, actions } = renderOverview(target, 'document', { mode: 'document', value: await api.nodeView.context('document') }, 'test-nonce', 1);
+    let previous = html.indexOf('Open the template of logic.md');
     for (const heading of ['Upstream', 'Downstream', 'Code paths', 'Active change', 'Drift', 'Context']) {
-      const index = html.indexOf(`<h2>${heading}</h2>`);
+      const index = html.indexOf(`>${heading}</h2>`);
       assert.ok(index > previous, heading);
       previous = index;
     }
-    for (const text of ['Required', 'Internal', 'No active change', 'Document: logic.md', 'Implementation', ':focus-visible']) assert.ok(html.includes(text), text);
+    for (const text of ['>required<', '>internal<', 'No active change', '>Write<', '>Implement<', 'Instructions · ', ':focus-visible']) assert.ok(html.includes(text), text);
     const copy = actions.find(a => a.command === 'uspec.context.copy' && (a.args[0] as any).mode === 'document')!;
     api.nodeView.setTarget({ p, node: 'product/support/refunds', doc: 'rules' });
     await vscode.commands.executeCommand(copy.command, ...copy.args);
@@ -147,7 +146,7 @@ describe('uspec extension', () => {
     const contents = actions.find(a => a.command === 'uspec.context.copyWithContents' && (a.args[0] as any).mode === 'document')!;
     await vscode.commands.executeCommand(contents.command, ...contents.args);
     assert.match(await vscode.env.clipboard.readText(), /===== docs\/system\/services\/payments\/logic.md =====/);
-    const screen = renderOverview({ p, node: 'experience/ops-console/refunds' }, [], 'nonce', 2);
+    const screen = renderOverview({ p, node: 'experience/ops-console/refunds' }, undefined, undefined, 'nonce', 2);
     const link = screen.actions.find(a => a.command === 'uspec.openSection' && a.args[2] === 'refund-window')!;
     await vscode.commands.executeCommand(link.command, ...link.args);
     const editor = vscode.window.activeTextEditor!;
@@ -159,7 +158,7 @@ describe('uspec extension', () => {
     api.nodeWindow.show({ p, node });
     const panel = api.nodeWindow.currentPanel!;
     await vscode.window.showTextDocument(vscode.Uri.file(file(`docs/${node}/logic.md`)));
-    await waitFor('document template', () => panel.webview.html.includes('logic.md template'));
+    await waitFor('document template', () => panel.webview.html.includes('Open the template of logic.md'));
     assert.strictEqual(api.nodeView.target?.doc, 'logic');
     await vscode.commands.executeCommand('uspec.revealNode', p.root, node);
     assert.strictEqual(api.nodeView.target?.doc, 'logic', 'programmatic reveal retains document context');
@@ -175,6 +174,17 @@ describe('uspec extension', () => {
     panel.dispose();
   });
 
+  it('shows a linked node in the one overview tab', async () => {
+    await vscode.commands.executeCommand('uspec.showOverview', p.root, 'product/support/refunds');
+    const panel = api.nodeWindow.currentPanel!;
+    assert.ok(panel);
+    assert.strictEqual(api.nodeView.target?.node, 'product/support/refunds');
+    await vscode.commands.executeCommand('uspec.showOverview', p.root, 'system/services/payments');
+    assert.strictEqual(api.nodeWindow.currentPanel, panel);
+    assert.strictEqual(api.nodeView.target?.node, 'system/services/payments');
+    panel.dispose();
+  });
+
   it('re-evaluates code ownership and clears removed nodes on model refresh', () => {
     const view = new NodeViewProvider(api.manager);
     const payments = p.nodes.get('system/services/payments')!;
@@ -183,6 +193,9 @@ describe('uspec extension', () => {
     try {
       view.followFile(p.uriOf('services/payments/nested/index.ts'));
       assert.strictEqual(view.target?.node, payments.path);
+      view.followFile(p.uriOf('unowned/notes.txt'));
+      assert.strictEqual(view.target?.node, payments.path, 'a file of no node keeps the last node');
+      view.followFile(p.uriOf('services/payments/nested/index.ts'));
       nested.code = ['services/payments/nested/'];
       api.manager.notify(p);
       assert.strictEqual(view.target?.node, nested.path);
@@ -314,7 +327,7 @@ describe('uspec extension', () => {
     const target = { p, node: 'system/services/payments', doc: 'logic' };
     api.nodeView.setTarget(target);
     const contexts = await Promise.all((['document', 'implement'] as const).map(async mode => ({ mode, value: await api.nodeView.context(mode) })));
-    const overview = renderOverview(target, contexts, 'test-nonce', 5);
+    const overview = renderOverview(target, 'document', contexts[0], 'test-nonce', 5);
     assert.ok(contexts.every(ctx => ctx.value.files.change.some(f => f.path === `.uspec/changes/${c}/change.md`)));
     const diff = overview.actions.find(a => a.command === 'uspec.diffFile')!;
     assert.ok(diff);

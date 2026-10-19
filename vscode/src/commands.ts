@@ -14,6 +14,7 @@ import { codePaths, readText, type Project, type ProjectManager } from './projec
 import { ensureSkills, installSkills, openAgent } from './terminal';
 import type { NodeViewProvider } from './views/nodeView';
 import { contextArgs } from './views/nodeView';
+import type { NodeWindow } from './views/nodeWindow';
 import type { SpecEl, SpecTreeProvider } from './views/specTree';
 import type { StateWindows } from './views/stateWindow';
 
@@ -24,6 +25,7 @@ export interface Services {
   specTree: SpecTreeProvider;
   specTreeView: vscode.TreeView<SpecEl>;
   nodeView: NodeViewProvider;
+  nodeWindow: NodeWindow;
   stateWindows: StateWindows;
   extensionPath: string;
 }
@@ -233,6 +235,14 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
       await open(pick.p.uriOf(pick.p.nodeYaml(pick.node)));
       await reveal(pick.p, pick.node);
     }
+    s.nodeWindow.show({ p: pick.p, node: pick.node, doc: pick.doc });
+  });
+
+  // The node overview of a node, in its one reused tab.
+  reg('uspec.showOverview', async (root: string, node: string) => {
+    const p = manager.projects.find((x) => x.root === root);
+    const key = nodeKey(node);
+    if (p?.nodes.has(key)) s.nodeWindow.show({ p, node: key });
   });
 
   reg('uspec.revealActiveFile', async () => {

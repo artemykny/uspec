@@ -60,7 +60,7 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     new StatusBar(manager, agents),
   );
 
-  registerCommands(ctx, { manager, agents, content, specTree, specTreeView, nodeView, stateWindows, extensionPath: ctx.extensionPath });
+  registerCommands(ctx, { manager, agents, content, specTree, specTreeView, nodeView, nodeWindow, stateWindows, extensionPath: ctx.extensionPath });
 
   // The Node view and the Spec Tree follow the active file; a selection in the Spec Tree shows its node.
   const follow = (editor: vscode.TextEditor | undefined) => {
@@ -80,8 +80,8 @@ export function activate(ctx: vscode.ExtensionContext): UspecApi {
     specTreeView.onDidChangeSelection((e) => {
       if (specTree.revealing) return;
       const el = e.selection[0];
-      if (el?.kind === 'node') { nodeView.setTarget({ p: el.p, node: el.node }); nodeWindow.show({ p: el.p, node: el.node }); }
-      else if (el?.kind === 'doc' && !el.missing) nodeView.setTarget({ p: el.p, node: el.node, doc: el.doc });
+      if (el?.kind === 'node') nodeWindow.show({ p: el.p, node: el.node });
+      else if (el?.kind === 'doc' && !el.missing) nodeWindow.show({ p: el.p, node: el.node, doc: el.doc });
     }),
     manager.onDidChange(() => {
       void vscode.commands.executeCommand('setContext', 'uspec.hasProject', manager.projects.length > 0);
