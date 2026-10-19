@@ -1,10 +1,10 @@
 name: uspec
 description: "The top of the spec: what uspec is and why."
-children: [method, cli, skills]
+children: [method, cli, skills, editor]
 documents:
   - overview
 instructions: |
-  uspec is a specification method plus the tooling for it: a CLI and skills
-  for Claude Code and Codex. The root says what uspec is, for whom, and what
-  it must achieve. Details live in the branches: the method in method/, the
-  tools in cli/ and skills/.
+  uspec is a specification method plus the tooling for it: a CLI, skills
+  for Claude Code and Codex, and a VS Code extension. The root says what
+  uspec is, for whom, and what it must achieve. Details live in the
+  branches: the method in method/, the tools in cli/, skills/ and vscode/.

@@ -167,3 +167,24 @@ fn validate_reports_errors() {
     assert!(msgs.iter().any(|m| m.contains("isn't node.yaml or a document")));
     assert!(msgs.iter().any(|m| m.contains("missing required document user-story.md")));
 }
+
+#[test]
+fn types_lists_documents() {
+    let p = Project::example("types");
+    let v = p.json(&["types"]);
+    let types = v["types"].as_array().unwrap();
+    assert_eq!(types.len(), 16);
+    let service = types.iter().find(|t| t["type"] == "service").unwrap();
+    assert_eq!(service["code"], true);
+    assert_eq!(service["path"], ".uspec/node-types/service/node-type.yaml");
+    let docs = service["documents"].as_array().unwrap();
+    let ids: Vec<&str> = docs.iter().map(|d| d["document"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["api", "logic", "storage", "events", "compliance"]);
+    let logic = &docs[1];
+    assert_eq!(logic["exposed"], false);
+    assert_eq!(logic["derives_from"][0], "api");
+    assert_eq!(logic["template"], ".uspec/node-types/service/logic.md");
+    assert_eq!(docs[0]["extra"], true);
+    assert_eq!(docs[2]["required"], false);
+    assert!(p.ok(&["types"]).contains("logic.md        internal, derives from api"));
+}

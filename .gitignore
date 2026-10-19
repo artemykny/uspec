@@ -3,6 +3,7 @@
 
 # Editors
 .vscode/
+!vscode/.vscode/
 .idea/
 *.swp
 *.swo

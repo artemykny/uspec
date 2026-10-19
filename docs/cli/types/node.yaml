@@ -1,0 +1,5 @@
+type: command
+derives_from:
+  - method/node-types
+code:
+  - cli/src/main.rs

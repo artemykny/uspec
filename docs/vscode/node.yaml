@@ -1,0 +1,22 @@
+type: editor
+derives_from:
+  - method/spec-tree
+  - method/node-types
+  - method/changes
+  - method/agents
+  - method/context
+  - method/drift
+  - cli
+  - cli/init
+  - cli/validate
+  - cli/tree
+  - cli/types
+  - cli/context
+  - cli/node
+  - cli/change
+  - cli/drift
+  - skills/uspec-spec
+  - skills/uspec-implement
+  - skills/uspec-review
+code:
+  - vscode/

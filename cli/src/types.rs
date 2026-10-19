@@ -32,6 +32,7 @@ struct TemplateFront {
 }
 
 pub struct Template {
+    pub description: Option<String>,
     pub required: bool,
     pub derives_from: Vec<String>,
     pub exposed: bool,
@@ -43,6 +44,7 @@ pub struct Template {
 pub struct NodeType {
     pub id: String,
     pub name: String,
+    pub description: Option<String>,
     pub code: bool,
     pub children: Vec<String>,
     pub derives_from: Vec<String>,
@@ -163,6 +165,7 @@ fn load_type(project: &Project, dir: &Path, id: &str, errors: &mut Vec<Issue>) -
         templates.insert(
             doc.clone(),
             Template {
+                description: front.description,
                 required: front.required.unwrap_or(true),
                 derives_from: front.derives_from.unwrap_or_default(),
                 exposed: front.exposed.unwrap_or(true),
@@ -174,6 +177,7 @@ fn load_type(project: &Project, dir: &Path, id: &str, errors: &mut Vec<Issue>) -
     Some(NodeType {
         id: id.to_string(),
         name: def.name.unwrap_or_else(|| id.to_string()),
+        description: def.description,
         code: def.code,
         children: def.children,
         derives_from: def.derives_from,

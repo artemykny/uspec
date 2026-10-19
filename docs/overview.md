@@ -1,6 +1,6 @@
 # uspec
 
-uspec is a specification method for building products with AI agents, plus the tooling for it. A product is described as a **tree of spec nodes**. The spec is the **source of truth**: **narrowly focused agents** write each part of it, and code is generated from it, never the other way round. The method is in [method/](method/), the tools in [cli/](cli/) and [skills/](skills/).
+uspec is a specification method for building products with AI agents, plus the tooling for it. A product is described as a **tree of spec nodes**. The spec is the **source of truth**: **narrowly focused agents** write each part of it, and code is generated from it, never the other way round. The method is in [method/](method/), the tools in [cli/](cli/), [skills/](skills/) and [vscode/](vscode/).
 
 ## The problem
 
@@ -20,6 +20,7 @@ The first release contains:
 - **The method**: how a product is split into a spec tree, and how a change moves through it to the code.
 - **A CLI** (similar in spirit to OpenSpec) that scaffolds, validates and navigates the spec and tracks changes.
 - **Skills for Claude Code and Codex** that write the spec, implement nodes from it, review it, and turn experiments into spec changes.
+- **A VS Code extension** that shows the tree, its problems and its changes, and runs the skills' agents on a change from the editor.
 - **Presets**: ready-made node types to start a project from, including a minimal one for small apps.
 
 Out of scope for the first release:

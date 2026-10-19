@@ -1,0 +1,818 @@
+{
+  "name": "uspec",
+  "displayName": "uspec",
+  "description": "Work with uspec spec trees: navigate nodes and links, see problems and drift, track changes, and run Claude Code agents on them.",
+  "version": "0.1.0",
+  "publisher": "uspec",
+  "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/artemykny/uspec.git",
+    "directory": "vscode"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/.uspec/node-types/*/node-type.yaml"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "uspec",
+          "title": "uspec",
+          "icon": "media/uspec.svg"
+        }
+      ]
+    },
+    "views": {
+      "uspec": [
+        {
+          "id": "uspec.specTree",
+          "name": "Spec Tree"
+        },
+        {
+          "id": "uspec.changes",
+          "name": "Changes"
+        },
+        {
+          "id": "uspec.node",
+          "name": "Node"
+        },
+        {
+          "id": "uspec.types",
+          "name": "Node Types",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "uspec.specTree",
+        "contents": "The uspec CLI couldn't be started. Install it (cargo install --path cli in the uspec repository) or set its path.\n[Open Settings](command:workbench.action.openSettings?%22uspec.cliPath%22)",
+        "when": "uspec.cliMissing"
+      },
+      {
+        "view": "uspec.specTree",
+        "contents": "No uspec project in this workspace.\n[Initialize Project](command:uspec.init)",
+        "when": "!uspec.cliMissing && uspec.loaded && !uspec.hasProject"
+      },
+      {
+        "view": "uspec.changes",
+        "contents": "No open changes.\n[New Change](command:uspec.change.new)\n[Start Change in Claude Code](command:uspec.claude.startChange)",
+        "when": "uspec.hasProject && !uspec.hasChanges"
+      },
+      {
+        "view": "uspec.node",
+        "contents": "Open a spec document, a node.yaml or a file under a node's code paths to see its node.",
+        "when": "uspec.hasProject"
+      }
+    ],
+    "commands": [
+      {
+        "command": "uspec.refresh",
+        "title": "Refresh",
+        "category": "uspec",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "uspec.init",
+        "title": "Initialize Project",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.validate",
+        "title": "Validate",
+        "category": "uspec",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "uspec.checkDrift",
+        "title": "Check Drift",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.goToNode",
+        "title": "Go to Node",
+        "category": "uspec",
+        "icon": "$(search)"
+      },
+      {
+        "command": "uspec.revealActiveFile",
+        "title": "Reveal Spec Node",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.installSkills",
+        "title": "Install Skills into Project",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.node.new",
+        "title": "New Child Node…",
+        "category": "uspec",
+        "icon": "$(add)"
+      },
+      {
+        "command": "uspec.node.move",
+        "title": "Move/Rename Node…",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.node.remove",
+        "title": "Remove Node…",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.node.openYaml",
+        "title": "Open node.yaml",
+        "category": "uspec",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "uspec.node.revealCode",
+        "title": "Reveal Code Paths",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.node.searchCode",
+        "title": "Search in Code Paths",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.node.copyPath",
+        "title": "Copy Node Path",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.context.show",
+        "title": "Show Context",
+        "category": "uspec",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "uspec.context.copy",
+        "title": "Copy Context",
+        "category": "uspec",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "uspec.context.copyWithContents",
+        "title": "Copy Context with File Contents",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.change.new",
+        "title": "New Change…",
+        "category": "uspec",
+        "icon": "$(add)"
+      },
+      {
+        "command": "uspec.change.setActive",
+        "title": "Make Active",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.change.close",
+        "title": "Close Change",
+        "category": "uspec",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "uspec.change.openChangeMd",
+        "title": "Open change.md",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.change.openStatus",
+        "title": "Open status.yaml",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.change.reviewDiffs",
+        "title": "Review Diffs",
+        "category": "uspec",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "uspec.change.diff",
+        "title": "Diff Since Baseline",
+        "category": "uspec",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "uspec.change.recordUpdated",
+        "title": "Record as Updated",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.change.markAffected",
+        "title": "Mark Affected…",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.change.markNoChange",
+        "title": "Mark No-Change…",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.change.markDone",
+        "title": "Mark Done",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.agents.runChange",
+        "title": "Run Agents",
+        "category": "uspec",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "uspec.agents.stopChange",
+        "title": "Stop Agents",
+        "category": "uspec",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "uspec.agents.runTriage",
+        "title": "Run Triage Agent",
+        "category": "uspec",
+        "icon": "$(play)"
+      },
+      {
+        "command": "uspec.agents.runWriter",
+        "title": "Run Writer",
+        "category": "uspec",
+        "icon": "$(play)"
+      },
+      {
+        "command": "uspec.agents.runImplementer",
+        "title": "Run Implementer",
+        "category": "uspec",
+        "icon": "$(play)"
+      },
+      {
+        "command": "uspec.agents.review",
+        "title": "Review with Claude",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.agents.showLog",
+        "title": "Show Log",
+        "category": "uspec",
+        "icon": "$(output)"
+      },
+      {
+        "command": "uspec.agents.stopRun",
+        "title": "Stop",
+        "category": "uspec",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "uspec.agents.approve",
+        "title": "Approve",
+        "category": "uspec",
+        "icon": "$(check)"
+      },
+      {
+        "command": "uspec.agents.reject",
+        "title": "Reject",
+        "category": "uspec",
+        "icon": "$(close)"
+      },
+      {
+        "command": "uspec.agents.showRunDiff",
+        "title": "Show Diff",
+        "category": "uspec",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "uspec.agents.openSession",
+        "title": "Open in Claude Code",
+        "category": "uspec",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "uspec.agents.clearRuns",
+        "title": "Clear Finished Runs",
+        "category": "uspec",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "uspec.claude.startChange",
+        "title": "Start Change in Claude Code…",
+        "category": "uspec",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "uspec.claude.continueChange",
+        "title": "Continue in Claude Code",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.claude.implementChange",
+        "title": "Implement in Claude Code",
+        "category": "uspec"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "uspec.agents.showLog",
+          "when": "false"
+        },
+        {
+          "command": "uspec.agents.stopRun",
+          "when": "false"
+        },
+        {
+          "command": "uspec.agents.approve",
+          "when": "false"
+        },
+        {
+          "command": "uspec.agents.reject",
+          "when": "false"
+        },
+        {
+          "command": "uspec.agents.showRunDiff",
+          "when": "false"
+        },
+        {
+          "command": "uspec.agents.openSession",
+          "when": "false"
+        },
+        {
+          "command": "uspec.change.setActive",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "uspec.goToNode",
+          "when": "view == uspec.specTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "uspec.refresh",
+          "when": "view == uspec.specTree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "uspec.validate",
+          "when": "view == uspec.specTree",
+          "group": "1_check@1"
+        },
+        {
+          "command": "uspec.checkDrift",
+          "when": "view == uspec.specTree",
+          "group": "1_check@2"
+        },
+        {
+          "command": "uspec.installSkills",
+          "when": "view == uspec.specTree",
+          "group": "2_setup@1"
+        },
+        {
+          "command": "uspec.init",
+          "when": "view == uspec.specTree",
+          "group": "2_setup@2"
+        },
+        {
+          "command": "uspec.change.new",
+          "when": "view == uspec.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "uspec.claude.startChange",
+          "when": "view == uspec.changes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "uspec.refresh",
+          "when": "view == uspec.changes",
+          "group": "navigation@3"
+        },
+        {
+          "command": "uspec.agents.clearRuns",
+          "when": "view == uspec.changes",
+          "group": "1_runs@1"
+        },
+        {
+          "command": "uspec.refresh",
+          "when": "view == uspec.types",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "uspec.node.new",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.node.new",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/",
+          "group": "1_create@1"
+        },
+        {
+          "command": "uspec.node.move",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/ && viewItem =~ /;child/",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "uspec.node.remove",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/ && viewItem =~ /;child/",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "uspec.node.openYaml",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/",
+          "group": "3_open@1"
+        },
+        {
+          "command": "uspec.node.revealCode",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node.*;code/",
+          "group": "3_open@2"
+        },
+        {
+          "command": "uspec.node.searchCode",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node.*;code/",
+          "group": "3_open@3"
+        },
+        {
+          "command": "uspec.node.copyPath",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.(node|doc)/",
+          "group": "3_open@4"
+        },
+        {
+          "command": "uspec.context.show",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.(doc|node.*;code)/",
+          "group": "4_context@1"
+        },
+        {
+          "command": "uspec.context.copy",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.(doc|node.*;code)/",
+          "group": "4_context@2"
+        },
+        {
+          "command": "uspec.context.copyWithContents",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.(doc|node.*;code)/",
+          "group": "4_context@3"
+        },
+        {
+          "command": "uspec.agents.review",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/",
+          "group": "5_agents@1"
+        },
+        {
+          "command": "uspec.agents.runWriter",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.doc.*;affected/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.change.diff",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.doc.*;inChange/",
+          "group": "5_change@1"
+        },
+        {
+          "command": "uspec.change.recordUpdated",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.doc.*;active/",
+          "group": "5_change@2"
+        },
+        {
+          "command": "uspec.change.markAffected",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.doc.*;(pending|affected)/",
+          "group": "5_change@3"
+        },
+        {
+          "command": "uspec.change.markNoChange",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.doc.*;(pending|affected)/",
+          "group": "5_change@4"
+        },
+        {
+          "command": "uspec.agents.runWriter",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.doc.*;affected/",
+          "group": "5_change@5"
+        },
+        {
+          "command": "uspec.agents.runChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;looping/)",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.stopChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;.*;running/",
+          "group": "inline@2"
+        },
+        {
+          "command": "uspec.change.reviewDiffs",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "inline@3"
+        },
+        {
+          "command": "uspec.agents.runChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.agents.stopChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;.*;running/",
+          "group": "1_agents@2"
+        },
+        {
+          "command": "uspec.claude.continueChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "2_claude@1"
+        },
+        {
+          "command": "uspec.claude.implementChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "2_claude@2"
+        },
+        {
+          "command": "uspec.change.setActive",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;active/)",
+          "group": "3_change@1"
+        },
+        {
+          "command": "uspec.change.reviewDiffs",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "3_change@2"
+        },
+        {
+          "command": "uspec.change.openChangeMd",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "3_change@3"
+        },
+        {
+          "command": "uspec.change.openStatus",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "3_change@4"
+        },
+        {
+          "command": "uspec.change.close",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.change;/",
+          "group": "4_close@1"
+        },
+        {
+          "command": "uspec.change.close",
+          "when": "view == uspec.changes && viewItem == uspec.closable",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.runTriage",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.triage;idle/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.runTriage",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.triage;idle/",
+          "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.agents.runWriter",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;affected;ready;idle/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.change.diff",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "group": "inline@2"
+        },
+        {
+          "command": "uspec.agents.runWriter",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;affected;ready;idle/",
+          "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.change.diff",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "group": "2_change@1"
+        },
+        {
+          "command": "uspec.change.recordUpdated",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;(pending|affected|no-change)/",
+          "group": "2_change@2"
+        },
+        {
+          "command": "uspec.change.markAffected",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;(pending|affected)/",
+          "group": "2_change@3"
+        },
+        {
+          "command": "uspec.change.markNoChange",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc;(pending|affected)/",
+          "group": "2_change@4"
+        },
+        {
+          "command": "uspec.context.show",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "group": "3_context@1"
+        },
+        {
+          "command": "uspec.context.copy",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeDoc/",
+          "group": "3_context@2"
+        },
+        {
+          "command": "uspec.agents.runImplementer",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode;pending;ready;idle/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.runImplementer",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode;pending;ready;idle/",
+          "group": "1_agents@1"
+        },
+        {
+          "command": "uspec.change.markDone",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode;pending/",
+          "group": "2_change@1"
+        },
+        {
+          "command": "uspec.context.show",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode/",
+          "group": "3_context@1"
+        },
+        {
+          "command": "uspec.context.copy",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.changeNode/",
+          "group": "3_context@2"
+        },
+        {
+          "command": "uspec.agents.approve",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.reject",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "group": "inline@2"
+        },
+        {
+          "command": "uspec.agents.showRunDiff",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;.*;writer/",
+          "group": "inline@3"
+        },
+        {
+          "command": "uspec.agents.stopRun",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;running/",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.agents.showLog",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run/",
+          "group": "inline@4"
+        },
+        {
+          "command": "uspec.agents.showLog",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run/",
+          "group": "1_run@1"
+        },
+        {
+          "command": "uspec.agents.showRunDiff",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;.*;writer/",
+          "group": "1_run@2"
+        },
+        {
+          "command": "uspec.agents.openSession",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;.*;session/",
+          "group": "1_run@3"
+        },
+        {
+          "command": "uspec.agents.approve",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "group": "2_approve@1"
+        },
+        {
+          "command": "uspec.agents.reject",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;needs-approval/",
+          "group": "2_approve@2"
+        },
+        {
+          "command": "uspec.agents.stopRun",
+          "when": "view == uspec.changes && viewItem =~ /^uspec\\.run;running/",
+          "group": "3_stop@1"
+        },
+        {
+          "command": "uspec.context.copy",
+          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "uspec.context.show",
+          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "group": "1_context@1"
+        },
+        {
+          "command": "uspec.context.copy",
+          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "group": "1_context@2"
+        },
+        {
+          "command": "uspec.context.copyWithContents",
+          "when": "view == uspec.node && viewItem == uspec.contextGroup",
+          "group": "1_context@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "uspec",
+      "properties": {
+        "uspec.cliPath": {
+          "type": "string",
+          "default": "uspec",
+          "description": "The uspec CLI: a command on the PATH or a path to the binary."
+        },
+        "uspec.claudePath": {
+          "type": "string",
+          "default": "",
+          "description": "Claude Code, for agent runs and terminal sessions. Empty: `claude` on the PATH, then the binary bundled with the Claude Code extension."
+        },
+        "uspec.agents.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model for agent runs (an alias such as `opus` or a full model name). Empty uses Claude Code's default."
+        },
+        "uspec.agents.maxParallel": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "description": "Agent runs at once per change."
+        },
+        "uspec.agents.approveWrites": {
+          "type": "string",
+          "enum": [
+            "user-visible",
+            "always",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Wait for approval when the writer says the update is user-visible (an API, a user story, a business rule, text users read).",
+            "Wait for approval of every writer update.",
+            "Record every writer update without asking."
+          ],
+          "default": "user-visible",
+          "description": "Which writer updates wait for your approval before they are recorded."
+        },
+        "uspec.agents.implementerAllowedTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Bash"
+          ],
+          "description": "Claude Code permission rules implementers get on top of reading and editing their node's code paths. `Bash` lets them run tests, type checks and linters; narrow it to rules such as `Bash(npm test:*)`."
+        },
+        "uspec.validateOnChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run `uspec validate` after every change to the spec tree or node types."
+        },
+        "uspec.drift.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run `uspec drift` with every refresh and mark drifting nodes."
+        },
+        "uspec.specTree.followActiveEditor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reveal the active file's node in the Spec Tree."
+        },
+        "uspec.templateHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Flag lines of template guidance (`<…>`) left in spec documents."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "copy-skills": "node scripts/copy-skills.mjs",
+    "build": "npm run copy-skills && node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "compile-tests": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "test:unit": "npm run compile-tests && mocha 'out/test/unit/**/*.test.js'",
+    "test:integration": "npm run build && npm run compile-tests && node out/test/runIntegration.js",
+    "test": "npm run test:unit && npm run test:integration",
+    "package": "npm run build && vsce package --no-dependencies --skip-license",
+    "test:live": "npm run build && npm run compile-tests && USPEC_LIVE=1 node out/test/runIntegration.js"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.17.0",
+    "@types/vscode": "~1.94.0",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.0",
+    "mocha": "^10.8.2",
+    "typescript": "^5.6.3"
+  }
+}

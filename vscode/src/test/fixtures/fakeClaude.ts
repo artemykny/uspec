@@ -1,0 +1,59 @@
+// A stand-in for `claude -p` in the integration tests: reads the prompt on stdin, answers in the
+// role's output format with stream-json events, and edits what a real agent would.
+import * as fs from 'fs';
+import * as path from 'path';
+
+const args = process.argv.slice(2);
+const log = process.env.FAKE_CLAUDE_LOG;
+
+function emit(e: object): void {
+  process.stdout.write(JSON.stringify(e) + '\n');
+}
+
+function finish(result: string, sessionId: string): void {
+  emit({ type: 'assistant', message: { content: [{ type: 'text', text: result }] }, session_id: sessionId });
+  emit({ type: 'result', subtype: 'success', is_error: false, result, session_id: sessionId, num_turns: 1, total_cost_usd: 0.01, duration_ms: 20 });
+}
+
+let input = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (c) => (input += c));
+process.stdin.on('end', () => {
+  const sessionId = `fake-${process.pid}`;
+  const role = /triage agent/.test(input) ? 'triage' : /writer agent/.test(input) ? 'writer' : /implementer agent/.test(input) ? 'implementer' : 'reviewer';
+  if (log) fs.appendFileSync(log, JSON.stringify({ role, args }) + '\n');
+  emit({ type: 'system', subtype: 'init', session_id: sessionId, model: 'fake', permissionMode: 'default' });
+
+  if (role === 'triage') {
+    // Candidates are the lines under `batch:`: `    <path>   <rules>`.
+    const batch = input.split('\n  batch:\n')[1] ?? '';
+    const lines = batch
+      .split('\n')
+      .map((l) => l.trim().split(/\s{2,}/)[0])
+      .filter((p) => p.endsWith('.md'))
+      .map((p) =>
+        p.endsWith('system/services/payments/logic.md') && !fs.readFileSync(p, 'utf8').includes('30 days')
+          ? `${p} | affected | The eligibility rule says 14 days.`
+          : `${p} | no-change | The document doesn't depend on the refund window.`,
+      );
+    finish(`${lines.join('\n')}\n\nNotes:\n- none`, sessionId);
+    return;
+  }
+  if (role === 'writer') {
+    const doc = input.match(/^document:\n {2}(\S+)/m)?.[1];
+    if (!doc) {
+      finish('blocked\nNo document in the context.', sessionId);
+      return;
+    }
+    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.resolve(doc) } }] }, session_id: sessionId });
+    fs.appendFileSync(doc, '\nRefunds can be requested within 30 days.\n');
+    finish('updated\nThe refund window is 30 days.\nuser-visible: yes', sessionId);
+    return;
+  }
+  if (role === 'implementer') {
+    const mode = input.match(/^Mode: (\w+)$/m)?.[1];
+    finish(`done\nChanged: nothing (fake, mode ${mode})\nVerified: fake`, sessionId);
+    return;
+  }
+  finish('No findings.', sessionId);
+});

@@ -1,0 +1,13 @@
+name: Editor extension
+description: An editor integration for uspec projects.
+code: true
+derives_from: [concept, cli, command, skill]
+documents:
+  - overview
+instructions: |
+  An editor extension is a UI over the CLI. Everything that follows a rule
+  (validation, propagation, readiness, context, drift, node moves) comes from
+  the CLI's JSON output, and a change's state is changed only through
+  `uspec change set`. The extension adds navigation, editing help and a live
+  view of the tree and its changes, and runs the skills' subagents with the
+  prompts the skills define. It never reimplements a rule of the method.

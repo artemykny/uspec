@@ -9,6 +9,7 @@ The `uspec` command does everything that doesn't need judgement: it scaffolds th
 | [`init`](init/) | Creates `.uspec/`, the node types and the root node. |
 | [`validate`](validate/) | Checks the tree's structure. |
 | [`tree`](tree/) | Prints the tree with node types. |
+| [`types`](types/) | Prints the node types with their documents. |
 | [`context`](context/) | Prints the instructions and files an agent reads to write a document or implement a node. |
 | [`node`](node/) | Adds, moves and removes nodes. |
 | [`change`](change/) | Opens a change, shows what's ready to triage, write or implement, records results, closes it. |

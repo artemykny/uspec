@@ -80,6 +80,8 @@ enum Cmd {
     Validate,
     /// Print the tree with node types.
     Tree { node: Option<String> },
+    /// Print the node types with their documents.
+    Types,
     /// Print what an agent reads to write a document or implement a node.
     Context {
         node: String,
@@ -170,6 +172,7 @@ fn run(cmd: Cmd, out: &Out) -> Result<()> {
         Cmd::Init { .. } => unreachable!(),
         Cmd::Validate => cmd_validate(&project, &types, &tree, out),
         Cmd::Tree { node } => cmd_tree(&project, &tree, node.as_deref(), out),
+        Cmd::Types => cmd_types(&project, &types, out),
         Cmd::Context { node, document, implement, change } => context::cmd_context(
             &project,
             &types,
@@ -259,6 +262,93 @@ fn cmd_tree(project: &Project, tree: &tree::Tree, node: Option<&str>, out: &Out)
         for l in &n.links {
             println!("{}  → {l}", "  ".repeat(d));
         }
+    }
+    Ok(())
+}
+
+fn cmd_types(project: &Project, types: &types::Types, out: &Out) -> Result<()> {
+    let dir = |id: &str| project.types_dir().join(id);
+    if out.json {
+        let v: Vec<Value> = types
+            .map
+            .values()
+            .map(|t| {
+                let docs: Vec<Value> = t
+                    .documents
+                    .iter()
+                    .map(|d| match t.templates.get(d) {
+                        Some(tpl) => json!({
+                            "document": d,
+                            "template": project.rel(&dir(&t.id).join(format!("{d}.md"))),
+                            "description": tpl.description,
+                            "required": tpl.required,
+                            "derives_from": tpl.derives_from,
+                            "exposed": tpl.exposed,
+                            "extra": tpl.extra,
+                        }),
+                        None => json!({
+                            "document": d,
+                            "template": null,
+                            "description": null,
+                            "required": true,
+                            "derives_from": [],
+                            "exposed": true,
+                            "extra": false,
+                        }),
+                    })
+                    .collect();
+                json!({
+                    "type": t.id,
+                    "name": t.name,
+                    "description": t.description,
+                    "path": project.rel(&dir(&t.id).join("node-type.yaml")),
+                    "code": t.code,
+                    "children": t.children,
+                    "derives_from": t.derives_from,
+                    "documents": docs,
+                    "instructions": t.instructions,
+                })
+            })
+            .collect();
+        return out.print(json!({ "types": v }));
+    }
+    let list = |ids: &[String]| if ids.is_empty() { "none".to_string() } else { ids.join(", ") };
+    for (i, t) in types.map.values().enumerate() {
+        if i > 0 {
+            println!();
+        }
+        println!("{}  {}{}", t.id, t.name, if t.code { "  code" } else { "" });
+        if let Some(d) = &t.description {
+            println!("  {}", d.trim());
+        }
+        let mut rows = vec![
+            ("children:".to_string(), list(&t.children)),
+            ("derives from:".to_string(), list(&t.derives_from)),
+            ("documents:".to_string(), String::new()),
+        ];
+        rows.extend(t.documents.iter().map(|d| {
+            let flags = match t.templates.get(d) {
+                None => "no template".to_string(),
+                Some(tpl) => {
+                    let mut f: Vec<String> = vec![];
+                    if !tpl.required {
+                        f.push("optional".into());
+                    }
+                    if !tpl.exposed {
+                        f.push("internal".into());
+                    }
+                    if tpl.extra {
+                        f.push("extra".into());
+                    }
+                    if !tpl.derives_from.is_empty() {
+                        f.push(format!("derives from {}", tpl.derives_from.join(", ")));
+                    }
+                    f.join(", ")
+                }
+            };
+            (format!("  {d}.md"), flags)
+        }));
+        print!("{}", columns(&rows, "  "));
     }
     Ok(())
 }

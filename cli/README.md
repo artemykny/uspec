@@ -23,7 +23,7 @@ The tests run the binary against a copy of [examples/example_product](../example
 
 | File | What it does |
 |---|---|
-| `src/main.rs` | Command line, `validate` and `tree` |
+| `src/main.rs` | Command line, `validate`, `tree` and `types` |
 | `src/project.rs` | Finds the project, reads `.uspec/config.yaml`, converts paths |
 | `src/types.rs` | Loads node types and templates |
 | `src/tree.rs` | Loads the spec tree |

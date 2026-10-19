@@ -1,0 +1,6 @@
+**
+!dist/extension.js
+!skills/**
+!media/**
+!package.json
+!README.md

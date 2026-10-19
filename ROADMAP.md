@@ -1,6 +1,6 @@
 # Roadmap
 
-uspec is at the design stage: the method is written down, and first versions of the CLI and the skills exist. The first release is a CLI plus skills for Claude Code and Codex ([docs/overview.md](docs/overview.md)).
+uspec is at the design stage: the method is written down, and first versions of the CLI, the skills and the VS Code extension exist. The first release is a CLI plus skills for Claude Code and Codex, and a VS Code extension ([docs/overview.md](docs/overview.md)).
 
 ## Done
 
@@ -40,6 +40,16 @@ First drafts for Claude Code in [skills/](skills/).
 
 - [ ] First preset from the example product's node types
 - [ ] A minimal preset for small apps
+
+## 5. VS Code extension
+
+Implemented in TypeScript in [vscode/](vscode/), specified in [docs/vscode/](docs/vscode/overview.md).
+
+- [x] `uspec types`: the node types as JSON, for editors and skills ([cli/types](docs/cli/types/usage.md))
+- [x] Spec Tree, Node, Changes and Node Types views; problems from `validate`, drift, badges, editing help
+- [x] Agents on a change from the Changes view: triage, writers and implementers with Claude Code, recorded through the CLI, with approval of writer updates
+- [ ] Graph views of the types, the links and a change's propagation
+- [ ] Publish to the Marketplace
 
 ## Later
 
