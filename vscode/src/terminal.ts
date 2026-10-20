@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { revealAgentTerminal } from './agentTerminal';
+import { createEditorTerminal } from './agentTerminal';
 import { type AgentProvider, providerLabel } from './core/provider';
 import { onPath } from './core/cli';
 import type { Project } from './projects';
@@ -52,14 +52,27 @@ export function quote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+/** The change each session opened for one works on. */
+const changeOf = new WeakMap<vscode.Terminal, { root: string; change: string }>();
+
 /** Opens a terminal in the project root running the selected CLI. */
-export function openAgent(p: Project, args: string[], name?: string, provider = selectedProvider()): vscode.Terminal | undefined {
+export function openAgent(p: Project, args: string[], opts: { name?: string; provider?: AgentProvider; change?: string } = {}): vscode.Terminal | undefined {
+  const provider = opts.provider ?? selectedProvider();
   const executable = agentOrComplain(provider);
   if (!executable) return;
-  const term = vscode.window.createTerminal({ name: name ?? `${providerLabel(provider)} · uspec`, cwd: p.root, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh', iconPath: new vscode.ThemeIcon('sparkle') });
-  void revealAgentTerminal(term);
+  const term = createEditorTerminal({ name: opts.name ?? `${providerLabel(provider)} · uspec`, cwd: p.root, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh', iconPath: new vscode.ThemeIcon('sparkle') });
+  term.show();
+  if (opts.change) changeOf.set(term, { root: p.root, change: opts.change });
   term.sendText((process.platform === 'win32' ? '& ' : '') + [executable, ...args].map(quote).join(' '));
   return term;
+}
+
+/** Closes the sessions opened for a change. */
+export function closeChangeSessions(p: Project, change: string): void {
+  for (const t of vscode.window.terminals) {
+    const c = changeOf.get(t);
+    if (c && c.root === p.root && c.change === change) t.dispose();
+  }
 }
 
 /** Where a skill is installed for a project, if anywhere. */

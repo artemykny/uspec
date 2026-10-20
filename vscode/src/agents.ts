@@ -38,7 +38,7 @@ import { isTemplateLeft } from './core/templates';
 import { join, nodeKey, showNode, splitDoc } from './core/paths';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
-import { agentOrComplain, openAgent, selectedProvider, promptFile, quote } from './terminal';
+import { agentOrComplain, closeChangeSessions, openAgent, selectedProvider, promptFile, quote } from './terminal';
 
 export type RunState = 'running' | 'needs-approval' | 'recorded' | 'blocked' | 'gap' | 'failed' | 'error' | 'stopped' | 'rejected' | 'reviewed';
 
@@ -142,6 +142,9 @@ export class AgentManager implements vscode.Disposable {
   private readonly loops = new Map<string, { stopped: boolean }>();
   private readonly slots = new Map<string, Slots>();
   private readonly ticker: NodeJS.Timeout;
+  /** The open changes of each project root, as last loaded. */
+  private readonly openChanges = new Map<string, Set<string>>();
+  private readonly watcher: vscode.Disposable;
 
   constructor(
     private readonly manager: ProjectManager,
@@ -153,10 +156,19 @@ export class AgentManager implements vscode.Disposable {
     this.ticker = setInterval(() => {
       if (this.runs.some((r) => r.state === 'running')) this.emitter.fire(undefined);
     }, 5000);
+    // A change that is no longer open takes its agents' sessions with it.
+    this.watcher = manager.onDidChange((p) => {
+      for (const q of p ? [p] : manager.projects) {
+        const open = new Set(q.changes.map((c) => c.name));
+        for (const change of this.openChanges.get(q.root) ?? []) if (!open.has(change)) this.closeSessions(q, change);
+        this.openChanges.set(q.root, open);
+      }
+    });
   }
 
   dispose(): void {
     clearInterval(this.ticker);
+    this.watcher.dispose();
     for (const r of this.runs) r.kill?.();
     this.emitter.dispose();
   }
@@ -951,6 +963,12 @@ export class AgentManager implements vscode.Disposable {
     this.emitter.fire(undefined);
   }
 
+  private closeSessions(p: Project, change: string): void {
+    this.stopChange(p, change);
+    for (const r of this.runs) if (r.p.root === p.root && r.change === change && r.terminal && vscode.window.terminals.includes(r.terminal)) r.terminal.dispose();
+    closeChangeSessions(p, change);
+  }
+
   stop(run: AgentRun): void {
     if (run.state !== 'running') return;
     run.stopped = true;
@@ -972,7 +990,7 @@ export class AgentManager implements vscode.Disposable {
         if (executable) { run.terminal.sendText((process.platform === 'win32' ? '& ' : '') + [executable, ...resumeArgs(run.provider, run.sessionId), ...(run.proposal ? [`Continue reviewing ${run.proposal}. Apply agreed revisions to that Markdown document, preserving its review format.`] : [])].map(quote).join(' ')); run.resumed = true; }
       }
       void revealAgentTerminal(run.terminal);
-    } else if (run.sessionId) { run.terminal = openAgent(run.p, resumeArgs(run.provider, run.sessionId), `${providerLabel(run.provider)} · ${run.title}`, run.provider); run.resumed = true; }
+    } else if (run.sessionId) { run.terminal = openAgent(run.p, resumeArgs(run.provider, run.sessionId), { name: `${providerLabel(run.provider)} · ${run.title}`, provider: run.provider }); run.resumed = true; }
   }
 
   clearFinished(): void {

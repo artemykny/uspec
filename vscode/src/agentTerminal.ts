@@ -157,7 +157,19 @@ export function startTerminalAgent(opts: {
   return { terminal, done, kill: () => { terminal.dispose(); end(1, 'stopped'); } };
 }
 
+/** Terminals in the editor area. Moving one there again would move the panel's active terminal instead. */
+const inEditor = new WeakSet<vscode.Terminal>();
+
+/** A terminal that opens in the editor area, without passing through the panel. */
+export function createEditorTerminal(options: vscode.TerminalOptions): vscode.Terminal {
+  const terminal = vscode.window.createTerminal({ ...options, location: vscode.TerminalLocation.Editor });
+  inEditor.add(terminal);
+  return terminal;
+}
+
 export async function revealAgentTerminal(terminal: vscode.Terminal): Promise<void> {
   terminal.show();
+  if (inEditor.has(terminal)) return;
+  inEditor.add(terminal);
   await vscode.commands.executeCommand('workbench.action.terminal.moveToEditor');
 }

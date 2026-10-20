@@ -457,8 +457,11 @@ describe('uspec extension', () => {
     assert.match(log, /--- input/);
     assert.match(log, /== recorded/);
 
+    const sessions = runs.map((r) => r.terminal).filter((t) => t && vscode.window.terminals.includes(t));
+    assert.ok(sessions.length, 'the runs’ sessions stay open');
     await vscode.commands.executeCommand('uspec.change.close', { kind: 'change', p, name: c });
     await waitFor('the change to close', () => p.changes.length === 0);
+    await waitFor('the change’s agent sessions to close', () => !sessions.some((t) => vscode.window.terminals.includes(t!)));
     assert.ok(!fs.existsSync(file(`.uspec/changes/${c}`)));
     await waitFor('the window to say the change is closed', () => panel.webview.html.includes(`${c} is closed.`));
     panel.dispose();
@@ -518,6 +521,8 @@ describe('uspec extension', () => {
     await config.update('agents.approveWrites', 'always', vscode.ConfigurationTarget.Workspace);
     await api.manager.mutate(p, ['change', 'new', c]);
     await api.manager.mutate(p, ['change', 'set', c, key, 'affected', '--reason', 'Review test']);
+    // Earlier changes closed with their agents' terminals: the user's own terminal is the active one.
+    const own = vscode.window.createTerminal('own');
     try {
       const run = (await api.agents.runWriter(p, c, 'system/services/payments', [key]))!;
       assert.strictEqual(run.state, 'needs-approval');
@@ -551,6 +556,7 @@ describe('uspec extension', () => {
       assert.strictEqual(p.change(c)?.docs.get(key)?.state, 'updated');
       panel.dispose();
     } finally {
+      own.dispose();
       await config.update('agents.provider', originalProvider, vscode.ConfigurationTarget.Workspace);
       await config.update('agents.approveWrites', 'never', vscode.ConfigurationTarget.Workspace);
       fs.writeFileSync(target, original);

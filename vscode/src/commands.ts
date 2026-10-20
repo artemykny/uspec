@@ -766,7 +766,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
 
   reg('uspec.claude.continueChange', async (arg?: any) => {
     const c = await changeRef(arg);
-    if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-spec']))) openAgent(c.p, [`Use the uspec-spec skill. Continue the change ${c.name}.`], `Agent · ${c.name}`);
+    if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-spec']))) openAgent(c.p, [`Use the uspec-spec skill. Continue the change ${c.name}.`], { name: `Agent · ${c.name}`, change: c.name });
   });
 
 
