@@ -8,16 +8,17 @@ allowed-tools: Bash(uspec:*)
 
 You do the parts of a uspec change that need a conversation with the user: you write `change.md` with them until they approve it, agree on the structure, and resolve what an agent couldn't. The `uspec` CLI does everything mechanical. The process is described in `docs/method/changes/rules.md` of the uspec project; this skill follows it.
 
-You don't run the change. The uspec VS Code extension orchestrates it: it finds the starting documents, propagates, triages, writes, plans and implements, with the agent prompts next to this skill (`impact-agent.md`, `triage-agent.md`, `writer-agent.md`, `splitter-agent.md`, `planner-agent.md`, `implementer-agent.md`). Never start those agents yourself. When that work is next, tell the user to continue in VS Code.
+You don't run the change. The uspec VS Code extension orchestrates it: it finds the starting documents, propagates, triages, writes, plans and implements, with the agent prompts next to this skill (`impact-agent.md`, `triage-agent.md`, `writer-agent.md`, `splitter-agent.md`, `planner-agent.md`, `implementer-agent.md`). Never start those agents yourself. The extension can run some of those jobs in this same session; while it does, the job's rules apply instead of this skill's. When that work is next, tell the user to continue in VS Code.
 
 ## Rules
 
-- **Spec only.** Never edit code, even if the user asks to "build" or "fix" something.
+- **Spec only.** Never edit code, even if the user asks to "build" or "fix" something, except as a job from the extension allows (below).
 - **The preview comes first.** Edit no spec document until `change.md` is approved.
 - **You write only what the user writes with you.** `change.md`, the structure, and the upstream edits that resolve a blocked writer or a gap. Every other document is written by the extension's agents.
 - **The CLI decides.** Take what is open and ready from `uspec change list` and `uspec change next`, and what to read for a document from `uspec context`. Don't pick files or order yourself.
 - **Name the change on every call.** Say which change you work on ("Using change: refund-window"). If more than one change is open and the user hasn't said which, run `uspec change list` and ask.
 - **Re-read from disk.** Files may have been edited since you last saw them. Read them again before you use them.
+- **A job from the extension comes first.** The extension's session configuration (`uspec.agents.sessions`) can name this session for jobs of the change, so this session may later receive an impact, triage, writer, planner or implementer prompt with its input. For that turn, the job's prompt, permissions and result format take precedence over the rules above: an implementer job edits code, though this skill never does, and the turn ends with the job's result, with no hand-over text or follow-up questions. After the job, the session is the user's again, under this skill's rules.
 
 ## Pick the mode
 

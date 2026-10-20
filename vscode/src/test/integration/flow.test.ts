@@ -1,6 +1,7 @@
 // The extension in VS Code against a copy of the example product: loading, problems, the views, and
 // a change run by (fake) agents from the first update to close.
 import * as assert from 'assert';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -26,9 +27,70 @@ async function waitFor<T>(what: string, check: () => T | undefined | false | Pro
   }
 }
 
+/** A call of the fake agent: its role, arguments, prompt and the session it reported. */
+interface Call {
+  role: string;
+  args: string[];
+  input: string;
+  session: string;
+}
+
+function calls(): Call[] {
+  const log = process.env.FAKE_CLAUDE_LOG!;
+  return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l) as Call) : [];
+}
+
+const codex = process.env.USPEC_TEST_PROVIDER === 'codex';
+
+/** The session a call resumes, if any. */
+function resumes(call: Call): string | undefined {
+  const at = call.args.indexOf(codex ? 'resume' : '--resume');
+  return at < 0 ? undefined : call.args[at + 1];
+}
+
+/** Answers the extension's warnings instead of the user, and keeps what they said. */
+function answerWarnings(): { shown: string[]; restore(): void } {
+  const window = vscode.window as { showWarningMessage: (...args: any[]) => Thenable<unknown> };
+  const original = window.showWarningMessage;
+  const shown: string[] = [];
+  window.showWarningMessage = async (message: string, ...rest: any[]) => {
+    shown.push(message);
+    const items = rest.filter((x) => typeof x === 'string');
+    return items.find((x) => x === 'End and Continue' || x === 'Run Anyway');
+  };
+  return { shown, restore: () => { window.showWarningMessage = original; } };
+}
+
+/** Puts the example's documents back as they were committed. */
+function resetDocs(): void {
+  execFileSync('git', ['checkout', '--', 'docs'], { cwd: work });
+}
+
 describe('uspec extension', () => {
   let api: UspecApi;
   let p: Project;
+
+  /** Runs a change's agents, approving every review, until every node is implemented. */
+  async function drive(c: string): Promise<void> {
+    for (let round = 0; round < 30; round++) {
+      await api.agents.runChange(p, c);
+      await api.manager.load(p);
+      const data = p.change(c)!;
+      if (data.counts.pending + data.counts.affected === 0 && data.counts.implementation_pending === 0 && data.plans.length && data.plans.every((x) => x.state === 'done')) return;
+      const runs = api.agents.runsOf(p, c);
+      const waiting = runs.filter((r) => r.state === 'needs-approval');
+      const stuck = runs.filter((r) => ['error', 'failed', 'blocked', 'gap'].includes(r.state)).map((r) => `${r.title}: ${r.outcome} ${r.detail}`);
+      assert.ok(waiting.length, `the agents stopped without a review: ${stuck.join('; ') || 'nothing stuck'}`);
+      for (const run of waiting) await api.agents.approve(run);
+    }
+    assert.fail(`${c} wasn't implemented`);
+  }
+
+  /** Removes a change, finished or not, as closing it would. */
+  async function discard(c: string): Promise<void> {
+    fs.rmSync(file(`.uspec/changes/${c}`), { recursive: true, force: true });
+    await api.manager.load(p);
+  }
 
   before(async () => {
     const ext = vscode.extensions.getExtension<UspecApi>('uspec.uspec')!;
@@ -430,8 +492,10 @@ describe('uspec extension', () => {
         assert.ok(!call.args.includes('--model'), 'Claude model aliases must not reach Codex');
         assert.match(call.input, /You run in a terminal started by the uspec VS Code extension/);
       }
-      assert.ok(calls.some(c => c.args.includes('resume')), 'later writer uses the same Codex thread');
-    } else {
+    }
+    // With `isolated`, the default, every automated job runs in a new session.
+    assert.ok(!calls.some((x) => x.args.includes('resume') || x.args.includes('--resume')), 'no job resumes a session');
+    if (process.env.USPEC_TEST_PROVIDER !== 'codex') {
     const writer = calls.find((x) => x.role === 'writer' && x.args.includes('Edit(docs/system/services/payments/compliance.md)'))!;
     assert.ok(writer.args.includes('Edit(docs/system/services/payments/api.md)'));
     assert.ok(writer.args.includes('Edit(docs/system/services/payments/api-extra/**)'));
@@ -562,6 +626,183 @@ describe('uspec extension', () => {
       fs.writeFileSync(target, original);
       fs.rmSync(file(`.uspec/changes/${c}`), { recursive: true, force: true });
       await api.manager.load(p);
+    }
+  });
+
+  it('runs a whole change in the explore session with `simple`', async function () {
+    this.timeout(120_000);
+    const c = 'simple-window';
+    const config = vscode.workspace.getConfiguration('uspec');
+    const warnings = answerWarnings();
+    const from = calls().length;
+    resetDocs();
+    try {
+      await config.update('agents.sessions', 'simple', vscode.ConfigurationTarget.Workspace);
+      await api.manager.mutate(p, ['change', 'new', c]);
+      fs.writeFileSync(file(`.uspec/changes/${c}/change.md`), '# Refund window: 30 days\n\n## What changes\n\nA refund can be requested up to 30 days after delivery.\n');
+      await api.manager.load(p);
+
+      // Continue with Agent opens the user's session; its hooks give the change its explore session.
+      await vscode.commands.executeCommand('uspec.claude.continueChange', { p, name: c });
+      const explore = await waitFor('the explore session', () => api.agents.sessions.explore(p, c)?.id);
+      const user = api.agents.sessions.explore(p, c)!.terminal!;
+      assert.ok(user && vscode.window.terminals.includes(user));
+      await drive(c);
+
+      // The first job asked before ending the user's agent, then ran in its terminal.
+      assert.ok(warnings.shown.some((m) => /continues the agent session explore, which is still open/.test(m)), warnings.shown.join(' | '));
+      const runs = api.agents.runsOf(p, c);
+      assert.strictEqual(runs.find((r) => r.role === 'impact')!.terminal, user);
+      const made = calls().slice(from);
+      assert.strictEqual(made[0].role, 'explore');
+      const jobs = made.slice(1);
+      assert.deepStrictEqual([...new Set(jobs.map((x) => x.role))].sort(), ['impact', 'implementer', 'planner', 'triage', 'writer']);
+      for (const call of jobs) assert.strictEqual(resumes(call), explore, `${call.role} resumes the explore session`);
+      // Each job had its own role's permissions.
+      if (!codex) {
+        const edits = (x: Call) => x.args.filter((a) => a.startsWith('Edit('));
+        for (const x of jobs.filter((x) => x.role === 'impact' || x.role === 'triage')) assert.deepStrictEqual(edits(x), [], x.role);
+        for (const x of jobs.filter((x) => x.role === 'writer')) assert.ok(edits(x).length && edits(x).every((a) => a.startsWith('Edit(docs/')), edits(x).join());
+        const implementer = jobs.find((x) => x.role === 'implementer')!;
+        assert.ok(implementer.args.includes('Edit(services/payments/**)'));
+        assert.ok(!edits(implementer).some((a) => a.startsWith('Edit(docs/')));
+        // One session, one model: triage doesn't switch to the triage model.
+        assert.ok(jobs.every((x) => !x.args.includes('--model')));
+        // Every job after the first is told to re-read.
+        const note = (x: Call) => x.args[x.args.indexOf('--append-system-prompt') + 1];
+        assert.doesNotMatch(note(jobs[0]), /re-read/);
+        assert.ok(jobs.slice(1).every((x) => /re-read anything before relying on it/.test(note(x))));
+      }
+      // No splitter: the extension's split holds every node in one plan, approved without asking.
+      assert.ok(!jobs.some((x) => x.role === 'splitter'));
+      assert.ok(!runs.some((r) => r.role === 'splitter'));
+      const split = fs.readFileSync(file(`.uspec/changes/${c}/plan-split.md`), 'utf8');
+      assert.match(split, new RegExp(`^### plans/${c}\\.md$`, 'm'));
+      const data = p.change(c)!;
+      assert.deepStrictEqual(data.plans.map((x) => [x.plan, [...x.nodes].sort()]), [[c, ['experience/ops-console/refunds', 'system/services/payments']]]);
+      // Every run's log says where it ran.
+      for (const r of runs) assert.match(r.log.join('\n'), /^session: explore \(resumed\)$/m, r.title);
+      assert.ok(runs.every((r) => r.session?.name === 'explore' && r.session.how === 'resumed'));
+    } finally {
+      warnings.restore();
+      await config.update('agents.sessions', undefined, vscode.ConfigurationTarget.Workspace);
+      await discard(c);
+      resetDocs();
+    }
+  });
+
+  it('runs stages in their own sessions with `complex`', async function () {
+    this.timeout(120_000);
+    const c = 'complex-window';
+    const config = vscode.workspace.getConfiguration('uspec');
+    const warnings = answerWarnings();
+    const from = calls().length;
+    const rules = file('docs/product/support/refunds/rules.md');
+    const ready = ['system/services/orders/api.md', 'system/services/payments/compliance.md'];
+    resetDocs();
+    try {
+      await config.update('agents.sessions', 'complex', vscode.ConfigurationTarget.Workspace);
+      await api.manager.mutate(p, ['change', 'new', c]);
+      fs.writeFileSync(file(`.uspec/changes/${c}/change.md`), '# Refund window: 30 days\n\n## What changes\n\nA refund can be requested up to 30 days after delivery.\n');
+      fs.writeFileSync(rules, fs.readFileSync(rules, 'utf8').replace('14 days', '30 days'));
+      await api.manager.mutate(p, ['change', 'set', c, 'product/support/refunds/rules.md', 'updated']);
+      for (const d of ready) await api.manager.mutate(p, ['change', 'set', c, d, 'affected', '--reason', 'The window changes.']);
+      await api.manager.load(p);
+      assert.deepStrictEqual(p.change(c)!.next!.write.map((w) => w.node), ['system/services/orders', 'system/services/payments']);
+      assert.ok(p.change(c)!.next!.triage);
+
+      // One pass: the writers of both nodes share `spec` in round 1, as one job; triage starts round 2
+      // in the same pass and resumes `spec` after it.
+      await api.agents.runChange(p, c);
+      const writer = api.agents.runsOf(p, c).find((r) => r.role === 'writer')!;
+      const triage = api.agents.runsOf(p, c).find((r) => r.role === 'triage')!;
+      assert.deepStrictEqual(writer.nodes, ['system/services/orders', 'system/services/payments']);
+      assert.deepStrictEqual(writer.docs.map((d) => d.key), ready);
+      assert.deepStrictEqual(writer.session, { name: 'spec', how: 'new' });
+      assert.deepStrictEqual(triage.session, { name: 'spec', how: 'resumed' });
+      assert.strictEqual(api.agents.sessions.round(p, c), 2);
+      let made = calls().slice(from);
+      const w = made.findIndex((x) => x.role === 'writer'), t = made.findIndex((x) => x.role === 'triage');
+      assert.ok(w >= 0 && t > w, 'triage ran after the writer');
+      assert.strictEqual(resumes(made[w]), undefined);
+      assert.strictEqual(resumes(made[t]), made[w].session);
+      assert.match(made[w].input, /^## system\/services\/orders$/m);
+      assert.match(made[w].input, /^## system\/services\/payments$/m);
+      if (!codex) {
+        for (const d of ready) assert.ok(made[w].args.includes(`Edit(docs/${d})`), d);
+        // `spec` is used by triage and writers: triage runs on the agents model.
+        assert.ok(!made[t].args.includes('--model'));
+      }
+
+      // Session names and the round survive a reload.
+      const names = api.agents.runsOf(p, c).map((r) => [r.role, r.session?.name]);
+      api.agents.runs = [];
+      api.agents.restore();
+      assert.deepStrictEqual(api.agents.runsOf(p, c).map((r) => [r.role, r.session?.name]), names);
+      assert.strictEqual(api.agents.sessions.round(p, c), 2);
+      assert.strictEqual(api.agents.sessions.get(p, c, 'spec')?.id, made[w].session);
+
+      await drive(c);
+      made = calls().slice(from);
+      const runs = api.agents.runsOf(p, c);
+      const splitter = runs.find((r) => r.role === 'splitter')!;
+      assert.deepStrictEqual(splitter.session, { name: 'build', how: 'new' });
+      const planners = runs.filter((r) => r.role === 'planner' && r.session);
+      const implementers = runs.filter((r) => r.role === 'implementer');
+      assert.ok(planners.length >= 2, 'one planner per plan');
+      const planCall = (id: string) => made.find((x) => x.role === 'planner' && x.input.includes(`Assigned plan: .uspec/changes/${c}/plans/${id}.md`))!;
+      for (const planner of planners) {
+        const call = planCall(planner.item);
+        if (codex) {
+          // Codex can't fork: the planner gets a new session, and the log says why.
+          assert.strictEqual(resumes(call), undefined);
+          assert.match(planner.log.join('\n'), new RegExp(`^session: plan-${planner.item} \\(new; Codex can't fork build\\)$`, 'm'));
+        } else {
+          assert.strictEqual(resumes(call), splitter.sessionId);
+          assert.ok(call.args.includes('--fork-session'));
+          assert.deepStrictEqual(planner.session, { name: `plan-${planner.item}`, how: 'forked', from: 'build' });
+          assert.notStrictEqual(planner.sessionId, splitter.sessionId);
+        }
+      }
+      // Each implementer continues its planner.
+      for (const impl of implementers) {
+        const call = made.find((x) => x.role === 'implementer' && x.input.includes(`Plan: .uspec/changes/${c}/plans/${impl.item}.md`))!;
+        assert.strictEqual(resumes(call), planners.find((r) => r.item === impl.item)!.sessionId);
+        assert.deepStrictEqual(impl.session, { name: `plan-${impl.item}`, how: 'resumed' });
+      }
+      assert.ok(!warnings.shown.some((m) => /still open in its terminal/.test(m)), 'no automated job asks');
+    } finally {
+      warnings.restore();
+      await config.update('agents.sessions', undefined, vscode.ConfigurationTarget.Workspace);
+      await discard(c);
+      resetDocs();
+    }
+  });
+
+  it('runs every job in a new session while the sessions setting has a problem', async function () {
+    this.timeout(60_000);
+    const c = 'invalid-sessions';
+    const config = vscode.workspace.getConfiguration('uspec');
+    const warnings = answerWarnings();
+    const from = calls().length;
+    const key = 'system/services/payments/compliance.md';
+    resetDocs();
+    try {
+      await config.update('agents.sessions', { triage: 't-{plan}', writer: 'explore' }, vscode.ConfigurationTarget.Workspace);
+      await waitFor('the warning', () => warnings.shown.includes('uspec.agents.sessions: `{plan}` can\'t be used by triage. Agents run in new sessions until this is fixed.'));
+      await api.manager.mutate(p, ['change', 'new', c]);
+      await api.manager.mutate(p, ['change', 'set', c, key, 'affected', '--reason', 'Invalid sessions test']);
+      await api.manager.load(p);
+      const run = (await api.agents.runWriter(p, c, 'system/services/payments', [key]))!;
+      assert.strictEqual(run.session, undefined);
+      assert.match(run.log.join('\n'), /^session: new$/m);
+      const call = calls().slice(from).find((x) => x.role === 'writer')!;
+      assert.strictEqual(resumes(call), undefined);
+    } finally {
+      warnings.restore();
+      await config.update('agents.sessions', undefined, vscode.ConfigurationTarget.Workspace);
+      await discard(c);
+      resetDocs();
     }
   });
 

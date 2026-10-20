@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { createEditorTerminal } from './agentTerminal';
+import { startInteractiveAgent } from './agentTerminal';
 import { type AgentProvider, providerLabel } from './core/provider';
 import { onPath } from './core/cli';
 import type { Project } from './projects';
@@ -47,23 +47,32 @@ export function agentOrComplain(provider = selectedProvider()): string | undefin
 
 const skillFolder = (provider = selectedProvider()) => provider === 'codex' ? '.agents' : '.claude';
 
-export function quote(s: string): string {
-  if (process.platform === 'win32') return `'${s.replace(/'/g, "''")}'`;
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
 /** The change each session opened for one works on. */
 const changeOf = new WeakMap<vscode.Terminal, { root: string; change: string }>();
 
-/** Opens a terminal in the project root running the selected CLI. */
-export function openAgent(p: Project, args: string[], opts: { name?: string; provider?: AgentProvider; change?: string } = {}): vscode.Terminal | undefined {
+/** Marks a terminal's session as one of a change's, so it closes with the change. */
+export function tagChange(terminal: vscode.Terminal, root: string, change: string): void {
+  changeOf.set(terminal, { root, change });
+}
+
+/**
+ * Opens the selected CLI (or `provider`) in the project root for the user to talk to, in `terminal`
+ * when its shell is free, else in the editor; `onSession` gets its session id from the agent's hooks.
+ */
+export function openAgent(
+  p: Project,
+  args: string[],
+  opts: { name?: string; provider?: AgentProvider; change?: string; prompt?: string; terminal?: vscode.Terminal; onSession?(id: string, provider: AgentProvider): void } = {},
+): vscode.Terminal | undefined {
   const provider = opts.provider ?? selectedProvider();
   const executable = agentOrComplain(provider);
   if (!executable) return;
-  const term = createEditorTerminal({ name: opts.name ?? `${providerLabel(provider)} · uspec`, cwd: p.root, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh', iconPath: new vscode.ThemeIcon('sparkle') });
-  term.show();
-  if (opts.change) changeOf.set(term, { root: p.root, change: opts.change });
-  term.sendText((process.platform === 'win32' ? '& ' : '') + [executable, ...args].map(quote).join(' '));
+  const term = startInteractiveAgent({
+    executable, provider, cwd: p.root, args, prompt: opts.prompt, terminal: opts.terminal,
+    name: opts.name ?? `${providerLabel(provider)} · uspec`,
+    onSession: (id) => opts.onSession?.(id, provider),
+  });
+  if (opts.change) tagChange(term, p.root, opts.change);
   return term;
 }
 

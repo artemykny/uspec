@@ -11,7 +11,7 @@ import { CONTEXT_GROUPS, type ContextJson, type NextJson, type SetJson } from '.
 import { baseName, docKey, join, nodeKey, showNode, splitDoc } from './core/paths';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
-import { ensureSkills, installSkills, openAgent } from './terminal';
+import { ensureSkills, installSkills } from './terminal';
 import type { NodeViewProvider } from './views/nodeView';
 import { contextArgs } from './views/nodeView';
 import type { NodeWindow } from './views/nodeWindow';
@@ -745,9 +745,9 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     const r = runArg(arg);
     if (r) await agents.showDiff(r, runDocArg(arg));
   });
-  reg('uspec.agents.openSession', (arg?: any) => {
+  reg('uspec.agents.openSession', async (arg?: any) => {
     const r = runArg(arg);
-    if (r) agents.openSession(r);
+    if (r) await agents.openSession(r);
   });
   reg('uspec.agents.clearRuns', () => agents.clearFinished());
 
@@ -761,12 +761,13 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
       placeHolder: 'Refunds can be requested within 30 days instead of 14',
     });
     if (!what?.trim()) return;
-    if (await ensureSkills(p, s.extensionPath, ['uspec-spec'])) openAgent(p, [`Use the uspec-spec skill. ${what.trim()}`]);
+    // Its session becomes the explore session of the change it opens.
+    if (await ensureSkills(p, s.extensionPath, ['uspec-spec'])) agents.openExplore(p, `Use the uspec-spec skill. ${what.trim()}`);
   });
 
   reg('uspec.claude.continueChange', async (arg?: any) => {
     const c = await changeRef(arg);
-    if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-spec']))) openAgent(c.p, [`Use the uspec-spec skill. Continue the change ${c.name}.`], { name: `Agent · ${c.name}`, change: c.name });
+    if (c && (await ensureSkills(c.p, s.extensionPath, ['uspec-spec']))) agents.openExplore(c.p, `Use the uspec-spec skill. Continue the change ${c.name}.`, c.name);
   });
 
 

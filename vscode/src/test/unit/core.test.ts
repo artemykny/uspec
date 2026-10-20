@@ -15,9 +15,11 @@ import {
   parseWriter,
   permissions,
   plannerInput,
+  runNote,
   triageInput,
   writerContextArgs,
   writerDocs,
+  writerInput,
 } from '../../core/agents';
 import { findToken, locateInFile, locateIssue } from '../../core/issues';
 import { anchor, formatLink, headings, parseLink, sectionLine, sectionText } from '../../core/links';
@@ -285,6 +287,27 @@ describe('agents', () => {
     assert.strictEqual(modelFor('reviewer', settings), undefined);
     assert.strictEqual(modelFor('writer', { model: 'opus', triageModel: 'sonnet' }), 'opus');
     assert.strictEqual(modelFor('triage', { model: 'opus', triageModel: '' }), undefined);
+    // In a session more than one role uses, triage runs on the agents model too.
+    assert.strictEqual(modelFor('triage', { model: 'opus', triageModel: 'sonnet' }, true), 'opus');
+    assert.strictEqual(modelFor('triage', settings, true), undefined);
+    assert.strictEqual(modelFor('writer', { model: 'opus', triageModel: 'sonnet' }, true), 'opus');
+  });
+
+  it('gives a writer of several nodes each node’s context', () => {
+    const one = writerInput([{ node: 'cli/tree', context: '# Instructions\n\ntree\n' }]);
+    assert.strictEqual(one, '# Instructions\n\ntree\n');
+    const two = writerInput([
+      { node: 'cli/change', context: '# Instructions\n\nchange\n' },
+      { node: 'vscode', context: '# Instructions\n\nvscode\n' },
+    ]);
+    assert.strictEqual(two, '## cli/change\n\n# Instructions\n\nchange\n\n## vscode\n\n# Instructions\n\nvscode\n');
+  });
+
+  it('adds the re-read note to the system prompt of a job in a used session', () => {
+    const perms = permissions('triage');
+    assert.doesNotMatch(runNote(perms), /re-read/);
+    assert.match(runNote(perms, { reread: true }), /Files may have changed since those jobs \(the user edited or rejected them, other runs wrote them\): re-read anything before relying on it/);
+    assert.match(claudeArgs(perms, { reread: true })[claudeArgs(perms, { reread: true }).indexOf('--append-system-prompt') + 1], /re-read/);
   });
 
   it('gives one writer per node all its documents to write', () => {

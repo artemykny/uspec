@@ -9,10 +9,11 @@ import { StringDecoder } from 'string_decoder';
 import type { AgentProvider } from './core/provider';
 import type { ClaudeResult, ClaudeRun } from './core/claude';
 
-/** Runs the agent on the terminal's own TTY and writes its exit code when it exits. */
+/** Runs the agent on the terminal's own TTY, writes its own pid, and writes the agent's exit code when it exits. */
 const launcher = String.raw`
 const fs = require('fs'), { spawn } = require('child_process');
 const c = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+fs.writeFileSync(c.pid, String(process.pid));
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(c.executable, c.args, { cwd: c.cwd, env, stdio: 'inherit' });
@@ -45,8 +46,33 @@ const dq = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
 /** Terminals whose agent process is still running. */
 const live = new Set<vscode.Terminal>();
 
+/** The launcher of each terminal's agent: where it writes its pid, and when the agent has exited. */
+const launches = new Map<vscode.Terminal, { pid: string; exited: Promise<void> }>();
+
+/** Terminals the user opened an agent in to talk to it: Start/Continue with Agent and continued runs. */
+const interactive = new WeakSet<vscode.Terminal>();
+
 export function agentAlive(terminal: vscode.Terminal | undefined): boolean {
   return !!terminal && live.has(terminal);
+}
+
+/** Whether the user opened the terminal's agent to talk to it. */
+export function isInteractive(terminal: vscode.Terminal | undefined): boolean {
+  return !!terminal && interactive.has(terminal);
+}
+
+/**
+ * Ends the terminal's agent: the launcher forwards SIGTERM to it, and once it has exited the
+ * terminal's shell is free for the next run. A launcher that can't be reached closes the terminal.
+ */
+export async function endAgent(terminal: vscode.Terminal): Promise<void> {
+  const l = launches.get(terminal);
+  if (!l || !live.has(terminal)) return;
+  try {
+    process.kill(Number(fs.readFileSync(l.pid, 'utf8')), 'SIGTERM');
+    await Promise.race([l.exited, new Promise((r) => setTimeout(r, 10_000))]);
+  } catch { /* not started yet, or gone */ }
+  if (live.has(terminal)) terminal.dispose();
 }
 
 /** How the agent calls the hook: settings for Claude Code, a `notify` program for Codex. */
@@ -56,13 +82,17 @@ function hookArgs(provider: AgentProvider, wrapper: string, events: string): str
   return ['--settings', JSON.stringify({ hooks: { SessionStart: [{ hooks: [command] }], Stop: [{ hooks: [command] }] } })];
 }
 
+/**
+ * Starts the agent in `terminal` when its shell is free, else in a new hidden terminal (in the editor
+ * with `editor`). Without a prompt the agent waits for the user.
+ */
 export function startTerminalAgent(opts: {
-  executable: string; provider: AgentProvider; cwd: string; args: string[]; prompt: string; name: string; terminal?: vscode.Terminal;
+  executable: string; provider: AgentProvider; cwd: string; args: string[]; prompt?: string; name: string; terminal?: vscode.Terminal; editor?: boolean;
   onEvent(e: any): void;
 }): ClaudeRun & { terminal: vscode.Terminal } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uspec-agent-'));
   fs.chmodSync(dir, 0o700);
-  const events = path.join(dir, 'events'), exit = path.join(dir, 'exit');
+  const events = path.join(dir, 'events'), exit = path.join(dir, 'exit'), pid = path.join(dir, 'pid');
   const script = path.join(dir, 'launch.cjs'), config = path.join(dir, 'input.json'), hookScript = path.join(dir, 'hook.cjs');
   fs.writeFileSync(script, launcher, { mode: 0o600 });
   fs.writeFileSync(hookScript, hook, { mode: 0o600 });
@@ -72,22 +102,24 @@ export function startTerminalAgent(opts: {
     ? `@set ELECTRON_RUN_AS_NODE=1\r\n@"${process.execPath}" "${hookScript}" %*\r\n`
     : `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec ${q(process.execPath)} ${q(hookScript)} "$@"\n`, { mode: 0o700 });
   let prompt = opts.prompt;
-  if (prompt.length > MAX_ARG) {
+  if (prompt !== undefined && prompt.length > MAX_ARG) {
     const file = path.join(dir, 'prompt.md');
     fs.writeFileSync(file, prompt, { mode: 0o600 });
     prompt = `Read ${file} in full and follow it exactly. It is your task, from the uspec VS Code extension.`;
   }
-  const args = [...opts.args, ...hookArgs(opts.provider, wrapper, events), '--', prompt];
-  fs.writeFileSync(config, JSON.stringify({ executable: opts.executable, cwd: opts.cwd, args, exit }), { mode: 0o600 });
+  const args = [...opts.args, ...hookArgs(opts.provider, wrapper, events), ...(prompt !== undefined ? ['--', prompt] : [])];
+  fs.writeFileSync(config, JSON.stringify({ executable: opts.executable, cwd: opts.cwd, args, exit, pid }), { mode: 0o600 });
 
-  // A terminal whose agent still runs can't take a new command: its input goes to the agent.
-  if (opts.terminal && live.has(opts.terminal)) opts.terminal.dispose();
-  const terminal = opts.terminal && !live.has(opts.terminal) ? opts.terminal : vscode.window.createTerminal({
+  // A terminal whose agent still runs can't take a new command: its input goes to the agent. The
+  // caller ends it first (endAgent); otherwise the run gets a terminal of its own.
+  const options: vscode.TerminalOptions = {
     name: opts.name, cwd: opts.cwd, shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/sh',
     iconPath: new vscode.ThemeIcon('sparkle'),
     env: { ELECTRON_RUN_AS_NODE: '1' },
-  });
+  };
+  const terminal = opts.terminal && !live.has(opts.terminal) ? opts.terminal : opts.editor ? createEditorTerminal(options) : vscode.window.createTerminal(options);
   live.add(terminal);
+  interactive.delete(terminal);
   terminal.sendText(`${process.platform === 'win32' ? '& ' : ''}${[process.execPath, script, config].map(q).join(' ')}`);
 
   const result: ClaudeResult = { text: '', isError: false, exitCode: null, signal: null, stderr: '' };
@@ -95,6 +127,8 @@ export function startTerminalAgent(opts: {
   const decoder = new StringDecoder('utf8'), tailDecoder = new StringDecoder('utf8');
   let resolve!: (r: ClaudeResult) => void;
   const done = new Promise<ClaudeResult>(r => resolve = r);
+  let exited!: () => void;
+  launches.set(terminal, { pid, exited: new Promise<void>(r => exited = r) });
   const grow = (file: string, from: number): Buffer | undefined => {
     if (!fs.existsSync(file)) return undefined;
     const size = fs.statSync(file).size;
@@ -144,8 +178,10 @@ export function startTerminalAgent(opts: {
     ended = true;
     try { read(); } catch { /* the run ends anyway */ }
     clearInterval(timer); close.dispose(); live.delete(terminal);
+    if (launches.get(terminal)?.pid === pid) launches.delete(terminal);
     settle({ exitCode: code, isError: true, stderr: why ?? `${opts.provider === 'codex' ? 'Codex' : 'Claude Code'} ended before finishing its turn` });
     fs.rmSync(dir, { recursive: true, force: true });
+    exited();
   };
   const timer = setInterval(() => {
     try {
@@ -155,6 +191,21 @@ export function startTerminalAgent(opts: {
   }, 200);
   const close = vscode.window.onDidCloseTerminal(t => { if (t === terminal) end(1, 'The agent terminal was closed'); });
   return { terminal, done, kill: () => { terminal.dispose(); end(1, 'stopped'); } };
+}
+
+/**
+ * Opens an agent for the user to talk to (Start/Continue with Agent, continuing a run) through the
+ * same launcher and hooks as runs, in `terminal` when its shell is free, else in the editor. It
+ * doesn't wait for a result; `onSession` gets the session id the hooks report.
+ */
+export function startInteractiveAgent(opts: {
+  executable: string; provider: AgentProvider; cwd: string; args: string[]; prompt?: string; name: string; terminal?: vscode.Terminal;
+  onSession(id: string): void;
+}): vscode.Terminal {
+  const run = startTerminalAgent({ ...opts, editor: true, onEvent: (e) => { if (e.session_id) opts.onSession(e.session_id); } });
+  interactive.add(run.terminal);
+  void revealAgentTerminal(run.terminal);
+  return run.terminal;
 }
 
 /** Terminals in the editor area. Moving one there again would move the panel's active terminal instead. */

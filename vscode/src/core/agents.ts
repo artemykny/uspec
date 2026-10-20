@@ -75,9 +75,18 @@ export function writerContextArgs(node: string, documents: string[], change: str
   return ['context', shown, ...documents.flatMap((d) => ['--document', splitDoc(d).doc]), '--change', change];
 }
 
-/** The model a role runs on: triage on `uspec.agents.triageModel`, the others on `uspec.agents.model`; empty is Claude Code's default. */
-export function modelFor(role: Role, settings: { model?: string; triageModel?: string }): string | undefined {
-  const m = role === 'triage' ? settings.triageModel : settings.model;
+/** A writer's input: one node's context as `uspec context` prints it, or for several nodes each under `## <node>`. */
+export function writerInput(contexts: { node: string; context: string }[]): string {
+  return contexts.length === 1 ? contexts[0].context : nodeContexts(contexts);
+}
+
+/**
+ * The model a role runs on: triage on `uspec.agents.triageModel`, the others on `uspec.agents.model`;
+ * empty is Claude Code's default. In a session more than one role uses (`shared`), every role runs on
+ * `uspec.agents.model`, so the session doesn't switch models.
+ */
+export function modelFor(role: Role, settings: { model?: string; triageModel?: string }, shared = false): string | undefined {
+  const m = role === 'triage' && !shared ? settings.triageModel : settings.model;
   return m?.trim() || undefined;
 }
 
@@ -141,22 +150,27 @@ export function permissions(
  * What a run is told about where it runs, so it doesn't spend turns on commands that may be blocked:
  * compound shell commands and `git -C` don't match the allowed rules.
  */
-export function runNote(p: Permissions): string {
+export function runNote(p: Permissions, opts: { reread?: boolean } = {}): string {
   const edits = p.allowed.filter((a) => a.startsWith('Edit(')).map((a) => a.slice(5, -1));
   return [
     'You run in a terminal started by the uspec VS Code extension in the project root. Permission prompts are not shown: anything outside your allowed tools is approved or blocked automatically.',
     'Work without asking questions: the final message of your first turn is read as your result.',
     'Read files with the Read tool, one call per file. Run git as `git diff <commit> -- <path>` from the current directory: no `git -C`, no pipes, loops or chained commands.',
     edits.length ? `You may edit only: ${edits.join(', ')}.` : 'You may not edit any file.',
+    ...(opts.reread ? [REREAD] : []),
   ].join(' ');
 }
 
+/** What a job is told in a session that already did a job (docs/vscode/overview.md#agents, Shared sessions). */
+export const REREAD =
+  'This session already did other jobs of the change. Files may have changed since those jobs (the user edited or rejected them, other runs wrote them): re-read anything before relying on it. Only this job’s input, permissions and result format apply, not those of earlier jobs in this session.';
+
 /** Arguments for interactive `claude`; the prompt comes after them. */
-export function claudeArgs(p: Permissions, opts: { model?: string; name?: string } = {}): string[] {
+export function claudeArgs(p: Permissions, opts: { model?: string; name?: string; reread?: boolean } = {}): string[] {
   const args = ['--strict-mcp-config', '--permission-mode', 'auto'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.name) args.push('--name', opts.name);
-  args.push('--append-system-prompt', runNote(p));
+  args.push('--append-system-prompt', runNote(p, opts));
   args.push('--tools', p.tools.join(','));
   if (p.allowed.length) args.push('--allowedTools', ...p.allowed);
   return args;

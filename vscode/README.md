@@ -23,6 +23,8 @@ Choose **uspec › Agents: Provider** in VS Code Settings: **Claude Code** (defa
 
 Every run is the agent's real interactive TUI (`claude` or `codex`) in a native terminal, hidden until you open it; its result comes from the agent's hooks, and after its first turn you can keep talking to it there. Read-only roles use the read-only sandbox; editing roles use workspace-write with their assigned scope in the prompt. Unlike Claude permission rules, this does not enforce individual file paths. Continue resumes the original Codex thread. Install Skills uses `.agents/skills/` for Codex.
 
+`uspec.agents.sessions` chooses which jobs of a change share an agent session: `isolated` (default, every job in a new session), `simple` (every job continues your own Start/Continue with Agent session, with no splitter and one plan), `complex` (one session per stage, one per plan), or a map from role to session name. A job that continues a session still gets only its own role's permissions, and is told to re-read files it relies on.
+
 Claude agent runs are `claude --permission-mode auto` (approve for me) in the project root. Their rules run without asking, and Claude Code's classifier approves or blocks anything else: impact, triage and reviewers only read and run `git diff`, `git show` and `git log`; a writer may also edit its documents and their `-extra/` folders; a splitter only reads; a planner may write only its assigned plan file; an implementer may edit the code paths of its plan's nodes and gets `uspec.agents.implementerAllowedTools` on top (`Bash` by default, so it can run tests). Runs cost what Claude Code costs.
 
 ## Develop

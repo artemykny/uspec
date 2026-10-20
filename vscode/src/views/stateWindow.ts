@@ -69,9 +69,9 @@ export function changeStage(c: ChangeData, runs: AgentRun[], changeMd?: string, 
             : 'closable';
   const at = stage === 'closable' ? STAGES.length : STAGES.indexOf(stage);
   const marks = Object.fromEntries(STAGES.map((s, i) => [s, i < at ? 'done' : i === at ? 'current' : 'todo'])) as StageInfo['marks'];
-  // A later run of the same item supersedes an earlier one that got stuck.
+  // A later run of the same item supersedes an earlier one that got stuck; a writer's items are its nodes.
   const latest = new Map<string, AgentRun>();
-  for (const r of runs) latest.set(`${r.role}|${r.item}`, r);
+  for (const r of runs) for (const item of r.role === 'writer' && r.nodes.length ? r.nodes : [r.item]) latest.set(`${r.role}|${item}`, r);
   const running = runs.filter((r) => r.state === 'running');
   return {
     stage,
@@ -79,7 +79,7 @@ export function changeStage(c: ChangeData, runs: AgentRun[], changeMd?: string, 
     waitsFor: running.length ? 'agents' : 'user',
     running,
     approvals: runs.filter((r) => r.state === 'needs-approval'),
-    stuck: [...latest.values()].filter((r) => STUCK.includes(r.state)),
+    stuck: [...new Set(latest.values())].filter((r) => STUCK.includes(r.state)),
     templateLeft: stage === 'waiting' && changeMd !== undefined ? isTemplateLeft(changeMd) : undefined,
   };
 }
@@ -189,7 +189,7 @@ export class StateWindows implements vscode.Disposable {
         if (old) await this.agents.reject(old);
         x.selected = undefined;
         void this.agents.runImpact(x.p, x.name);
-      } else if (m.action === 'openAgent' && run) this.agents.openSession(run);
+      } else if (m.action === 'openAgent' && run) void this.agents.openSession(run);
       else if (m.action === 'openProposal' && run?.proposal) await vscode.commands.executeCommand('vscode.open', x.p.uriOf(run.proposal));
       else if (m.action === 'reviewApprove' && run) {
         if (m.edits) await this.agents.saveReview(run, m.edits);
@@ -248,7 +248,8 @@ export class StateWindows implements vscode.Disposable {
   }
 
   private async current(p: Project, c: ChangeData, stage: ChangeStage, runs: AgentRun[]): Promise<string> {
-    const latest = (role: string, item?: string) => [...runs].reverse().find(r => r.role === role && (item === undefined || r.item === item));
+    // A writer of several nodes is the latest writer of each of them.
+    const latest = (role: string, item?: string) => [...runs].reverse().find(r => r.role === role && (item === undefined || r.item === item || (r.role === 'writer' && r.nodes.includes(item))));
     const out: string[] = [];
     switch (stage) {
       case 'waiting':
@@ -324,7 +325,7 @@ export class StateWindows implements vscode.Disposable {
 
   private runLine(r: AgentRun): string {
     const label = r.state === 'running' ? (r.queued ? 'Queued' : 'Running') : r.state === 'needs-approval' ? 'Review' : r.state === 'recorded' || r.state === 'reviewed' ? 'Done' : r.state.charAt(0).toUpperCase() + r.state.slice(1);
-    return `<span class="agent"><span class="status ${r.state}" role="status" title="${esc(this.agents.describe(r))}">${esc(label)}</span>${r.terminal || r.sessionId ? button('openAgent', r.state === 'running' ? 'Open agent window' : 'Continue with agent', { run: r.id }) : ''}${STUCK.includes(r.state) ? `<span class="error">${esc(r.detail || r.outcome)}</span>` : ''}</span>`;
+    return `<span class="agent">${r.session ? `<span class="session" title="Agent session">${esc(r.session.name)}</span>` : ''}<span class="status ${r.state}" role="status" title="${esc(this.agents.describe(r))}">${esc(label)}</span>${r.terminal || r.sessionId ? button('openAgent', r.state === 'running' ? 'Open agent window' : 'Continue with agent', { run: r.id }) : ''}${STUCK.includes(r.state) ? `<span class="error">${esc(r.detail || r.outcome)}</span>` : ''}</span>`;
   }
 
 }
@@ -393,6 +394,7 @@ function page(nonce: string, name: string, body: string): string {
   header strong { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
   .agent { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-left: auto; font-weight: normal; font-size: 12px; }
   .status { color: var(--vscode-descriptionForeground); }
+  .session { color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); font-size: 11px; }
   .status.running::before { content: '●'; color: var(--vscode-progressBar-background); margin-right: 5px; }
   .status.needs-approval::before { content: '●'; color: var(--vscode-editorWarning-foreground); margin-right: 5px; }
   .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }

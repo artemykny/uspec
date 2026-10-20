@@ -30,6 +30,8 @@ Only a node with code paths can be implemented. An implementer works on a [plan]
 
 **Missing links.** The agent can read more than its context, but if it keeps needing something outside it, a link is missing: the fix is to add the link, not to widen the context. A node with code paths must be implementable from its context alone (see [spec tree](../spec-tree/)).
 
+**Shared sessions.** A run may share a session with earlier runs (see [agents](../agents/)), and then also holds what those runs read and did. That isn't part of its context: the job's context is the same as in a new session, and the rules above hold for it alone, so a node that is implementable only with what an earlier run read is missing a link.
+
 ## Example
 
 An agent writes `logic.md` of `system/services/payments` during the change `refund-window`, which updated the refunds rules. `logic.md` derives from `api.md`, and the service links to `product/support/refunds`. Its context is:

@@ -384,7 +384,7 @@ export class ChangesViewProvider implements vscode.TreeDataProvider<ChangeEl>, v
     md.appendMarkdown(`**${run.title}** · ${run.state}\n\n`);
     if (run.outcome) md.appendMarkdown(`${escapeMd(run.outcome)}\n\n`);
     if (run.detail) md.appendMarkdown(`${escapeMd(run.detail.slice(0, 1500))}\n\n`);
-    if (run.sessionId) md.appendMarkdown(`session \`${run.sessionId}\``);
+    if (run.session || run.sessionId) md.appendMarkdown(`session ${run.session ? `${escapeMd(run.session.name)} ` : ''}${run.sessionId ? `\`${run.sessionId}\`` : ''}`);
     item.tooltip = md;
     const [icon, color] = RUN_ICONS[run.state] ?? ['circle-outline'];
     item.iconPath = new vscode.ThemeIcon(icon, color ? new vscode.ThemeColor(color) : undefined);

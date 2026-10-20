@@ -9,7 +9,10 @@ const args = process.argv.slice(2);
 const codex = !args.includes('--settings');
 const log = process.env.FAKE_CLAUDE_LOG;
 const input = args.at(-1) ?? '';
-const sessionId = args.includes('resume') ? args[args.indexOf('resume') + 1] : args.includes('--resume') ? args[args.indexOf('--resume') + 1] : `fake-${process.pid}`;
+// A resumed session keeps its id; a fork (`--fork-session`) and a new session get a new one.
+const sessionId = args.includes('--fork-session')
+  ? `fake-${process.pid}`
+  : args.includes('resume') ? args[args.indexOf('resume') + 1] : args.includes('--resume') ? args[args.indexOf('--resume') + 1] : `fake-${process.pid}`;
 
 /** Calls the hooks: Claude Code's from `--settings`, Codex's `notify` program. */
 function hook(event: string, fields: object): void {
@@ -30,6 +33,14 @@ function finish(result: string, _sessionId: string): void {
 
 function main(): void {
   hook('SessionStart', {});
+  if (input.startsWith('Use the uspec-spec skill')) {
+    // The user's own session (Start/Continue with Agent): it answers, then stays open until it is ended.
+    if (log) fs.appendFileSync(log, JSON.stringify({ role: 'explore', args, input, session: sessionId }) + '\n');
+    finish('What should change?', sessionId);
+    setInterval(() => undefined, 1 << 30);
+    for (const s of ['SIGTERM', 'SIGHUP'] as const) process.on(s, () => process.exit(0));
+    return;
+  }
   const role = /splitter agent/.test(input) ? 'splitter' : /impact agent/.test(input)
     ? 'impact'
     : /triage agent/.test(input)
@@ -41,7 +52,7 @@ function main(): void {
           : /implementer agent/.test(input)
             ? 'implementer'
             : 'reviewer';
-  if (log) fs.appendFileSync(log, JSON.stringify({ role, args, input }) + '\n');
+  if (log) fs.appendFileSync(log, JSON.stringify({ role, args, input, session: sessionId }) + '\n');
 
   if (role === 'impact') {
     // The change starts at the refund rules, as change.md says; the tree is in the input.
@@ -55,6 +66,17 @@ function main(): void {
     return;
   }
   if (role === 'planner') {
+    // The assigned plan of an approved split, with its nodes and dependencies.
+    const assigned = input.match(/^Assigned plan: (.+)$/m)?.[1];
+    if (assigned) {
+      const list = (field: string) => (input.match(new RegExp(`^${field}: (.*)$`, 'm'))?.[1] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const id = path.basename(assigned, '.md');
+      const nodes = list('Assigned nodes'), after = list('After');
+      fs.mkdirSync(path.dirname(assigned), { recursive: true });
+      fs.writeFileSync(assigned, `---\nnodes: [${nodes.join(', ')}]\n${after.length ? `after: [${after.join(', ')}]\n` : ''}---\n\n# ${id}\n\n## Steps\n\n1. Use the 30-day window.\n`);
+      finish(`planned\n${id} | ${nodes.join(', ')} | after: ${after.join(', ') || 'none'}`, sessionId);
+      return;
+    }
     // One plan per node to plan, named after the node; links between them order them.
     const dir = input.match(/^Plans: (.+)$/m)?.[1] ?? '';
     const nodes = (input.split('\nNodes to plan:\n')[1] ?? '').split('\n\n')[0].split('\n').filter(Boolean);
@@ -87,10 +109,12 @@ function main(): void {
     return;
   }
   if (role === 'writer') {
-    // The documents are the files under `document:`, in order; `-extra/` folders are listed with them.
-    const group = input.split('\ndocument:\n')[1]?.split(/\n(?! {2})/)[0] ?? '';
-    const docs = group
-      .split('\n')
+    // The documents are the files under `document:` of each node's context, in order; `-extra/`
+    // folders are listed with them.
+    const docs = input
+      .split('\ndocument:\n')
+      .slice(1)
+      .flatMap((g) => g.split(/\n(?! {2})/)[0].split('\n'))
       .map((l) => l.trim().split(/\s{2,}/)[0])
       .filter((p) => p.endsWith('.md'));
     if (!docs.length) {

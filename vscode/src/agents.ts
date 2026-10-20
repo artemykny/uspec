@@ -1,6 +1,6 @@
 // Agent runs on a change: starting the selected agent per item, recording results with `uspec change set`,
 // approval of writer updates, logs (docs/vscode/overview.md#agents).
-import { type AgentProvider, providerLabel, executionArgs, resumeArgs, codexScope } from './core/provider';
+import { type AgentProvider, providerLabel, executionArgs, resumeArgs, codexScope, canFork } from './core/provider';
 import * as fs from 'fs';
 import { createHash } from 'crypto';
 import * as path from 'path';
@@ -25,20 +25,23 @@ import {
   PROMPTS,
   triageInput,
   writerContextArgs,
+  writerInput,
   type Permissions,
   type Role,
   type StartingDocument,
   type WriterResult,
 } from './core/agents';
 import type { ClaudeResult } from './core/claude';
-import { agentAlive, startTerminalAgent, revealAgentTerminal } from './agentTerminal';
+import { agentAlive, endAgent, isInteractive, startTerminalAgent, revealAgentTerminal } from './agentTerminal';
 import { fileProposal, readFileProposal, readSplit, type FileDecision, type SplitPlan } from './core/workflow';
 import type { NextJson, SetJson } from './core/model';
 import { isTemplateLeft } from './core/templates';
 import { join, nodeKey, showNode, splitDoc } from './core/paths';
+import { autoSplit, EXPLORE, parseSessions, resolveSession, sharedSession, splitterOff, type SessionConfig, type SessionItem } from './core/sessions';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
-import { agentOrComplain, closeChangeSessions, openAgent, selectedProvider, promptFile, quote } from './terminal';
+import { SessionStore } from './sessionStore';
+import { agentOrComplain, closeChangeSessions, openAgent, selectedProvider, promptFile, tagChange } from './terminal';
 
 export type RunState = 'running' | 'needs-approval' | 'recorded' | 'blocked' | 'gap' | 'failed' | 'error' | 'stopped' | 'rejected' | 'reviewed';
 
@@ -78,7 +81,7 @@ export class AgentRun {
   docs: WriterDoc[] = [];
   /** An impact run's starting documents, waiting for the user to keep them. */
   starting: StartingDocument[] = [];
-  /** An implementer's plan nodes. */
+  /** A writer's nodes (several when their writers share a session), or the nodes of a split or plan. */
   nodes: string[] = [];
   /** The plan files a planner wrote. */
   plans: string[] = [];
@@ -88,17 +91,22 @@ export class AgentRun {
   proposal?: string;
   candidates: string[] = [];
   terminal?: vscode.Terminal;
+  /** Whether the user continued the run's session in its terminal. */
   resumed = false;
   kill?: () => void;
   stopped = false;
-  /** Waiting for a free slot: at most `uspec.agents.maxParallel` runs per change at once. */
+  /** Waiting for its session or a free slot: at most `uspec.agents.maxParallel` runs per change at once. */
   queued = true;
+  /** The named session the run went to, and whether it was new, resumed or forked (and from which). */
+  session?: { name: string; how: 'new' | 'resumed' | 'forked'; from?: string };
+  /** The session the run is to go to: a name from `uspec.agents.sessions`, or, for a revision, the session id to resume. */
+  want?: { name?: string; from?: string; resume?: string };
 
   constructor(
     readonly p: Project,
     readonly change: string | undefined,
     readonly role: Role,
-    /** The node path (reviewer, writer), the plan id (implementer), `batch` (triage) or `change` (impact, planner) the run works on. */
+    /** The node path (reviewer, writer: its first node), the plan id (implementer), `batch` (triage) or `change` (impact, planner) the run works on. */
     readonly item: string,
     private readonly label?: string,
   ) {}
@@ -135,16 +143,32 @@ class Slots {
   }
 }
 
+/** A session the user opened with the agent, until its change has it as its explore session. */
+interface PendingExplore {
+  root: string;
+  change?: string;
+  terminal?: vscode.Terminal;
+  id?: string;
+  provider?: AgentProvider;
+}
+
 export class AgentManager implements vscode.Disposable {
   runs: AgentRun[] = [];
   private readonly emitter = new vscode.EventEmitter<AgentRun | undefined>();
   readonly onDidChange = this.emitter.event;
   private readonly loops = new Map<string, { stopped: boolean }>();
   private readonly slots = new Map<string, Slots>();
+  /** One job at a time per session, in the order jobs are started. */
+  private readonly locks = new Map<string, Slots>();
   private readonly ticker: NodeJS.Timeout;
   /** The open changes of each project root, as last loaded. */
   private readonly openChanges = new Map<string, Set<string>>();
   private readonly watcher: vscode.Disposable;
+  private readonly configWatcher: vscode.Disposable;
+  /** The agent sessions of each change, by name. */
+  readonly sessions: SessionStore;
+  /** Start Change with Agent sessions still waiting for their change to appear. */
+  private pendingExplore: PendingExplore[] = [];
 
   constructor(
     private readonly manager: ProjectManager,
@@ -152,29 +176,85 @@ export class AgentManager implements vscode.Disposable {
     private readonly extensionPath: string,
     private readonly approvals: vscode.Memento,
   ) {
+    this.sessions = new SessionStore(approvals);
     // Elapsed times of running agents.
     this.ticker = setInterval(() => {
       if (this.runs.some((r) => r.state === 'running')) this.emitter.fire(undefined);
     }, 5000);
-    // A change that is no longer open takes its agents' sessions with it.
+    // A change that is no longer open takes its agents' sessions with it; one that appears takes the
+    // session Start Change with Agent opened.
     this.watcher = manager.onDidChange((p) => {
       for (const q of p ? [p] : manager.projects) {
         const open = new Set(q.changes.map((c) => c.name));
-        for (const change of this.openChanges.get(q.root) ?? []) if (!open.has(change)) this.closeSessions(q, change);
+        const before = this.openChanges.get(q.root);
+        for (const change of before ?? []) if (!open.has(change)) this.closeSessions(q, change);
+        if (before) for (const change of open) if (!before.has(change)) this.adoptExplore(q, change);
         this.openChanges.set(q.root, open);
       }
+    });
+    this.checkSessions();
+    this.configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('uspec.agents.sessions')) this.checkSessions();
     });
   }
 
   dispose(): void {
     clearInterval(this.ticker);
     this.watcher.dispose();
+    this.configWatcher.dispose();
     for (const r of this.runs) r.kill?.();
     this.emitter.dispose();
   }
 
   private config() {
     return vscode.workspace.getConfiguration('uspec');
+  }
+
+  /** Which jobs share a session, from `uspec.agents.sessions`; `isolated` while it has a problem. */
+  private sessionConfig(): SessionConfig {
+    return parseSessions(this.config().get('agents.sessions')).config;
+  }
+
+  /** Warns about each problem of `uspec.agents.sessions`. */
+  private checkSessions(): void {
+    for (const problem of parseSessions(this.config().get('agents.sessions')).problems) void vscode.window.showWarningMessage(problem);
+  }
+
+  // --- Explore sessions --------------------------------------------------------------------------
+
+  /**
+   * Opens the user's interactive `uspec-spec` session (Start/Continue with Agent). Its session id,
+   * from the agent's hooks, becomes the explore session of `change`, replacing an earlier one; started
+   * before the change exists, of the first change that appears while its terminal is open.
+   */
+  openExplore(p: Project, prompt: string, change?: string): void {
+    const x: PendingExplore = { root: p.root, change };
+    x.terminal = openAgent(p, [], {
+      prompt,
+      name: change ? `Agent · ${change}` : undefined,
+      change,
+      onSession: (id, provider) => {
+        Object.assign(x, { id, provider });
+        this.claimExplore(x);
+      },
+    });
+    if (x.terminal && !change) this.pendingExplore.push(x);
+  }
+
+  private adoptExplore(p: Project, change: string): void {
+    this.pendingExplore = this.pendingExplore.filter((x) => x.terminal && vscode.window.terminals.includes(x.terminal));
+    const x = this.pendingExplore.find((y) => y.root === p.root);
+    if (!x || this.sessions.explore(p, change)?.id) return;
+    this.pendingExplore = this.pendingExplore.filter((y) => y !== x);
+    x.change = change;
+    tagChange(x.terminal!, p.root, change);
+    this.claimExplore(x);
+  }
+
+  private claimExplore(x: PendingExplore): void {
+    const p = this.manager.projects.find((q) => q.root === x.root);
+    if (!p || !x.change || !x.id || !x.provider || !p.change(x.change)) return;
+    this.sessions.set(p, x.change, EXPLORE, { id: x.id, provider: x.provider, jobs: 0, terminal: x.terminal });
   }
 
   private changeKey(p: Project, change: string | undefined): string {
@@ -187,7 +267,8 @@ export class AgentManager implements vscode.Disposable {
 
   /**
    * Whether an item has a run that is running or waiting for approval: the triage `batch`, a node
-   * (of `role`, when given), or a document a writer is writing or that waits for approval.
+   * (of `role`, when given; one of a writer's nodes), or a document a writer is writing or that waits
+   * for approval.
    */
   isBusy(p: Project, change: string, item: string, role?: Role): boolean {
     return this.runs.some(
@@ -196,7 +277,9 @@ export class AgentManager implements vscode.Disposable {
         r.change === change &&
         r.active &&
         (!role || r.role === role) &&
-        (r.item === item || r.docs.some((d) => d.key === item && (d.state === 'running' || d.state === 'needs-approval'))),
+        (r.item === item ||
+          (r.role === 'writer' && r.nodes.includes(item)) ||
+          r.docs.some((d) => d.key === item && (d.state === 'running' || d.state === 'needs-approval'))),
     );
   }
 
@@ -221,6 +304,28 @@ export class AgentManager implements vscode.Disposable {
       this.slots.set(key, s);
     }
     return s;
+  }
+
+  private lockFor(p: Project, change: string | undefined, session: string): Slots {
+    const key = `${this.changeKey(p, change)}|${session}`;
+    let s = this.locks.get(key);
+    if (!s) {
+      s = new Slots(() => 1);
+      this.locks.set(key, s);
+    }
+    return s;
+  }
+
+  /**
+   * Names the run's session from its role and item (a revision already has its own), then runs `task`
+   * once the session's earlier jobs are done and the change has a free slot. Call it as the job starts:
+   * jobs of a session run in the order they are queued.
+   */
+  private queue(run: AgentRun, item: SessionItem, task: () => Promise<AgentRun>): Promise<AgentRun> {
+    if (!run.want && run.change && run.role !== 'reviewer') run.want = resolveSession(this.sessionConfig(), run.role, item);
+    const key = run.want?.name ?? (run.want?.resume ? `id:${run.want.resume}` : undefined);
+    const slot = () => this.slotsFor(run.p, run.change).run(task);
+    return key ? this.lockFor(run.p, run.change, key).run(slot) : slot();
   }
 
   private newRun(p: Project, change: string | undefined, role: Role, item: string, label?: string): AgentRun {
@@ -252,8 +357,52 @@ export class AgentManager implements vscode.Disposable {
     return run;
   }
 
-  /** Starts the run’s provider with a role's prompt and input; returns its result, or undefined when the run ended without one. */
+  /**
+   * Starts the run’s provider with a role's prompt and input in the run's session: the named session
+   * resumed, a fork of its source, or a new one (docs/vscode/overview.md#agents, Sessions). Returns its
+   * result, or undefined when the run ended without one or wasn't started.
+   */
   private async execute(run: AgentRun, input: string, perms: Permissions, mode?: string): Promise<ClaudeResult | undefined> {
+    const want = run.want ?? {};
+    const known = want.name && run.change ? this.sessions.get(run.p, run.change, want.name) : undefined;
+    let how: 'new' | 'resumed' | 'forked' = 'new';
+    let terminal: vscode.Terminal | undefined;
+    let jobsBefore = 0;
+    let why = '';
+    if (want.resume) {
+      // A revision resumes the session that produced it, with its provider.
+      run.sessionId = want.resume;
+      how = 'resumed';
+      terminal = run.terminal;
+      jobsBefore = 1;
+    } else if (known?.id) {
+      Object.assign(run, { provider: known.provider, sessionId: known.id });
+      how = 'resumed';
+      terminal = known.terminal;
+      jobsBefore = known.jobs;
+    } else if (want.from && run.change) {
+      const source = this.sessions.get(run.p, run.change, want.from);
+      if (source?.id && canFork(source.provider)) {
+        Object.assign(run, { provider: source.provider, sessionId: source.id });
+        how = 'forked';
+        jobsBefore = source.jobs;
+      } else why = source?.id ? `${providerLabel(source.provider)} can't fork ${want.from}` : `${want.from} has no session yet`;
+    }
+    // A session does one job at a time: an agent still open in its terminal is ended first, after
+    // asking when the user is talking to it; the job then runs in that terminal.
+    if (terminal && !vscode.window.terminals.includes(terminal)) terminal = undefined;
+    if (terminal && agentAlive(terminal)) {
+      if (isInteractive(terminal) || this.runs.some((r) => r.terminal === terminal && r.resumed)) {
+        const pick = await vscode.window.showWarningMessage(
+          `${run.title} continues the agent session ${want.name ?? run.sessionId}, which is still open in its terminal. End it and continue there?`,
+          { modal: true },
+          'End and Continue',
+        );
+        if (pick !== 'End and Continue') return this.cancel(run);
+      }
+      await endAgent(terminal);
+    }
+    if (terminal) for (const r of this.runs) if (r.terminal === terminal) r.resumed = false;
     const { skill, file } = PROMPTS[run.role];
     const promptPath = promptFile(run.p, this.extensionPath, skill, file, run.provider);
     if (!promptPath) {
@@ -265,18 +414,22 @@ export class AgentManager implements vscode.Disposable {
       this.finish(run, 'error', `${providerLabel(run.provider)} not found`);
       return undefined;
     }
-    const prompt = agentPrompt(fs.readFileSync(promptPath, 'utf8'), input, mode) + (run.provider === 'codex' ? codexScope(perms) : '');
+    const reread = jobsBefore > 0;
+    const shared = want.name ? sharedSession(this.sessionConfig(), run.role) : false;
+    const prompt = agentPrompt(fs.readFileSync(promptPath, 'utf8'), input, mode) + (run.provider === 'codex' ? codexScope(perms, { reread }) : '');
     const model = modelFor(run.role, {
       model: this.config().get<string>(run.provider === 'codex' ? 'agents.codexModel' : 'agents.model', ''),
       triageModel: this.config().get<string>(run.provider === 'codex' ? 'agents.codexTriageModel' : 'agents.triageModel', run.provider === 'codex' ? '' : 'sonnet'),
-    });
-    const args = executionArgs(run.provider, perms, { model, name: `uspec ${run.title}`, sessionId: run.sessionId });
+    }, shared);
+    const args = executionArgs(run.provider, perms, { model, name: `uspec ${run.title}`, sessionId: run.sessionId, fork: how === 'forked', reread });
+    if (want.name) run.session = { name: want.name, how, ...(how === 'forked' ? { from: want.from } : {}) };
     this.append(
       run,
       `prompt: ${promptPath}`,
       `model: ${model ?? `${providerLabel(run.provider)} default`}`,
       `provider: ${providerLabel(run.provider)}`,
-      ...(run.provider === 'claude' ? [`tools: ${perms.tools.join(', ')}`, `allowed: ${perms.allowed.join(' ')}`] : [codexScope(perms).trim()]),
+      ...(run.provider === 'claude' ? [`tools: ${perms.tools.join(', ')}`, `allowed: ${perms.allowed.join(' ')}`] : [codexScope(perms, { reread }).trim()]),
+      `session: ${want.name ? `${want.name} (${how === 'forked' ? `forked from ${want.from}` : how}${why ? `; ${why}` : ''})` : how}`,
       '',
       '--- input',
       ...(mode ? [mode, ''] : []),
@@ -285,10 +438,11 @@ export class AgentManager implements vscode.Disposable {
       '--- run',
     );
     run.queued = false;
+    this.persist();
     this.emitter.fire(run);
     const proc = startTerminalAgent({
-      name: `uspec · ${run.change ?? "review"} · ${run.title}`,
-      terminal: run.terminal && !run.resumed && vscode.window.terminals.includes(run.terminal) ? run.terminal : undefined,
+      name: `uspec · ${run.change ?? "review"} · ${want.name ? `${want.name} · ` : ''}${run.title}`,
+      terminal,
       executable,
       provider: run.provider,
       cwd: run.p.root,
@@ -310,6 +464,10 @@ export class AgentManager implements vscode.Disposable {
     run.sessionId = res.sessionId ?? run.sessionId;
     run.costUsd = res.costUsd;
     run.ended = Date.now();
+    // The session now continues from this job, in its terminal.
+    if (want.name && run.change && run.sessionId) {
+      this.sessions.set(run.p, run.change, want.name, { id: run.sessionId, provider: run.provider, jobs: (known?.jobs ?? 0) + 1, terminal: run.terminal });
+    }
     this.append(run, '', '--- result', res.text || '(none)');
     if (run.stopped) {
       this.finish(run, 'stopped', 'stopped');
@@ -321,6 +479,28 @@ export class AgentManager implements vscode.Disposable {
       return undefined;
     }
     return res;
+  }
+
+  /**
+   * A job the user didn't let end its session's open agent: it isn't started, and the change's run
+   * loop stops. A revision's documents wait for the user again.
+   */
+  private cancel(run: AgentRun): undefined {
+    const ctl = this.loops.get(this.changeKey(run.p, run.change));
+    if (ctl) ctl.stopped = true;
+    run.ended = Date.now();
+    run.queued = false;
+    if (run.want?.resume) {
+      for (const d of run.docs) if (d.state === 'running') d.state = 'needs-approval';
+      run.state = 'needs-approval';
+    } else {
+      run.state = 'stopped';
+      run.stopped = true;
+      this.runs = this.runs.filter((r) => r !== run);
+    }
+    this.persist();
+    this.emitter.fire(undefined);
+    return undefined;
   }
 
   private async guard(run: AgentRun, task: () => Promise<AgentRun>): Promise<AgentRun> {
@@ -335,7 +515,7 @@ export class AgentManager implements vscode.Disposable {
   private offerSession(run: AgentRun, message: string): void {
     void vscode.window.showWarningMessage(message, 'Continue with Agent', 'Show Log').then((a) => {
       if (a === 'Show Log') void this.showLog(run);
-      if (a === 'Continue with Agent') this.openSession(run);
+      if (a === 'Continue with Agent') void this.openSession(run);
     });
   }
 
@@ -356,7 +536,7 @@ export class AgentManager implements vscode.Disposable {
       if (pick !== 'Find Anyway') return undefined;
     }
     const run = this.newRun(p, change, 'impact', 'change', 'starting documents');
-    return this.slotsFor(p, change).run(() =>
+    return this.queue(run, {}, () =>
       this.guard(run, async () => {
         if (run.stopped) return run;
         const tree = await this.manager.text(p, ['tree']);
@@ -429,7 +609,8 @@ export class AgentManager implements vscode.Disposable {
     }
     const batch = next.triage.batch.map((b) => b.document);
     const run = this.newRun(p, change, 'triage', 'batch', `${batch.length} candidate${batch.length === 1 ? '' : 's'}`);
-    return this.slotsFor(p, change).run(() =>
+    // Every triage run starts the next round of the change.
+    return this.queue(run, { round: this.sessions.nextRound(p, change) }, () =>
       this.guard(run, async () => {
         if (run.stopped) return run;
         const res = await this.execute(run, triageInput(next!), permissions('triage'));
@@ -448,27 +629,31 @@ export class AgentManager implements vscode.Disposable {
 
   // --- Writer ------------------------------------------------------------------------------------
 
-  /** Whether a writer of `node` is running. */
+  /** Whether a writer of `node` is running, on its own or with other nodes. */
   writing(p: Project, change: string, node: string): boolean {
-    return this.runs.some((r) => r.p === p && r.change === change && r.role === 'writer' && r.item === node && r.state === 'running');
+    return this.runs.some((r) => r.p === p && r.change === change && r.role === 'writer' && (r.item === node || r.nodes.includes(node)) && r.state === 'running');
   }
 
   /**
-   * Runs one writer on documents of one node (keys, in order), with one context for all of them, and
-   * handles its result for each document on its own.
+   * Runs one writer on documents (keys, in order) of one node, or of the nodes of a round whose
+   * writers share a session, with each node's context, and handles its result for each document on
+   * its own.
    */
-  async runWriter(p: Project, change: string, node: string, documents: string[]): Promise<AgentRun | undefined> {
+  async runWriter(p: Project, change: string, node: string | string[], documents: string[]): Promise<AgentRun | undefined> {
     if (!p.change(change)) await this.manager.load(p);
-    if (!documents.length || this.writing(p, change, node) || documents.some((d) => this.isBusy(p, change, d))) return undefined;
-    const label = `${showNode(node)} · ${documents.map((d) => `${splitDoc(d).doc}.md`).join(', ')}`;
-    const previous = [...this.runsOf(p, change)].reverse().find(r => r.role === 'writer' && r.item === node);
-    const run = this.newRun(p, change, 'writer', node, label);
-    if (previous && !previous.resumed && previous.provider === run.provider) run.sessionId = previous.sessionId;
+    const nodes = typeof node === 'string' ? [node] : node;
+    if (!nodes.length || !documents.length || nodes.some((n) => this.writing(p, change, n)) || documents.some((d) => this.isBusy(p, change, d))) return undefined;
+    const docsOf = (n: string) => documents.filter((d) => splitDoc(d).node === n);
+    const label = nodes.map((n) => `${showNode(n)} · ${docsOf(n).map((d) => `${splitDoc(d).doc}.md`).join(', ')}`).join('; ');
+    const run = this.newRun(p, change, 'writer', nodes[0], label);
+    run.nodes = nodes;
     run.docs = documents.map((key) => ({ key, state: 'running', outcome: '', detail: '', snapshot: '' }));
-    return this.slotsFor(p, change).run(() =>
+    // Writers belong to the round of the last triage run before them.
+    return this.queue(run, { round: this.sessions.round(p, change), node: nodes[0] }, () =>
       this.guard(run, async () => {
         if (run.stopped) return run;
-        const input = await this.manager.text(p, writerContextArgs(node, documents, change)) + '\nUser review comments:\n' + documents.map(d => `${d}: ${this.approvals.get<string>(this.commentKey(p, change, d), '')}`).join('\n');
+        const contexts = await Promise.all(nodes.map(async (n) => ({ node: n, context: await this.manager.text(p, writerContextArgs(n, docsOf(n), change)) })));
+        const input = writerInput(contexts) + '\nUser review comments:\n' + documents.map(d => `${d}: ${this.approvals.get<string>(this.commentKey(p, change, d), '')}`).join('\n');
         // Saved before the run: what Show Diff compares with and Reject puts back.
         for (const [i, d] of run.docs.entries()) {
           const file = p.docFile(d.key);
@@ -476,8 +661,8 @@ export class AgentManager implements vscode.Disposable {
           d.snapshotUri = this.content.register('before', `${run.id}.${i}`, path.basename(file), () => d.snapshot);
         }
         const extras = documents.flatMap((key) => {
-          const { doc } = splitDoc(key);
-          return p.typeDoc(node, doc)?.extra ? [join(p.nodeDir(node), `${doc}-extra`)] : [];
+          const { node: n, doc } = splitDoc(key);
+          return p.typeDoc(n, doc)?.extra ? [join(p.nodeDir(n), `${doc}-extra`)] : [];
         });
         const res = await this.execute(run, input, permissions('writer', { documents: documents.map((d) => p.docFile(d)), extraDirs: extras }));
         if (!res) return run;
@@ -495,19 +680,23 @@ export class AgentManager implements vscode.Disposable {
     );
   }
 
-  /** Revises selected files in the author's session, keeping the original review snapshots. */
+  /**
+   * Revises selected files in the author's session, keeping the original review snapshots. It waits
+   * for the session's other jobs, and asks before ending the session's agent the user still has open.
+   */
   async reviseWriter(run: AgentRun, edits: { document: string; selected: boolean; comment: string }[]): Promise<void> {
     if (run.role !== 'writer' || run.state !== 'needs-approval') return;
-    if (run.resumed && run.terminal && vscode.window.terminals.includes(run.terminal)) throw new Error('Close the interactive agent terminal before starting an automated revision.');
     const docs = run.docs.filter(d => d.state === 'needs-approval' && edits.some(e => e.document === d.key && e.selected));
     if (!docs.length) return;
-    run.resumed = false; run.state = 'running'; run.ended = undefined; run.stopped = false;
+    run.state = 'running'; run.ended = undefined; run.stopped = false; run.queued = true;
     for (const d of docs) d.state = 'running';
+    run.want = { name: run.session?.name, resume: run.sessionId };
     this.emitter.fire(run);
-    await this.slotsFor(run.p, run.change).run(() => this.guard(run, async () => {
-      const input = await this.manager.text(run.p, writerContextArgs(run.item, docs.map(d => d.key), run.change!));
+    await this.queue(run, {}, () => this.guard(run, async () => {
+      const nodes = [...new Set(docs.map(d => splitDoc(d.key).node))];
+      const contexts = await Promise.all(nodes.map(async n => ({ node: n, context: await this.manager.text(run.p, writerContextArgs(n, docs.filter(d => splitDoc(d.key).node === n).map(d => d.key), run.change!)) })));
       const comments = edits.filter(e => docs.some(d => d.key === e.document)).map(e => `${e.document}: ${e.comment}`).join('\n');
-      const res = await this.execute(run, input + '\nRevise only these selected files. User comments:\n' + comments, permissions('writer', { documents: docs.map(d => run.p.docFile(d.key)) }));
+      const res = await this.execute(run, writerInput(contexts) + '\nRevise only these selected files. User comments:\n' + comments, permissions('writer', { documents: docs.map(d => run.p.docFile(d.key)) }));
       if (!res) return run;
       const parsed = parseWriter(res.text, docs.map(d => d.key), run.p.specRoot);
       for (const d of docs) await this.handleWriterResult(run, d, parsed.results.get(d.key), 'always');
@@ -590,7 +779,7 @@ export class AgentManager implements vscode.Disposable {
         .then((a) => (a === 'Show Diff' ? this.showDiff(run, d.key) : a === 'Approve' ? this.approve(run, d.key) : a === 'Reject' ? this.reject(run, d.key) : undefined));
     } else if (waiting.length > 1) {
       void vscode.window
-        .showInformationMessage(`${waiting.length} documents of ${showNode(run.item)} were updated. Approve them to record them in ${change}.`, 'Show Diff', 'Approve All', 'Reject All')
+        .showInformationMessage(`${waiting.length} documents of ${(run.nodes.length ? run.nodes : [run.item]).map(showNode).join(', ')} were updated. Approve them to record them in ${change}.`, 'Show Diff', 'Approve All', 'Reject All')
         .then((a) => (a === 'Show Diff' ? this.showDiff(run) : a === 'Approve All' ? this.approve(run) : a === 'Reject All' ? this.reject(run) : undefined));
     }
   }
@@ -698,7 +887,7 @@ export class AgentManager implements vscode.Disposable {
     const nodes = next.plan.nodes;
     const run = this.newRun(p, change, 'splitter', 'split');
     run.nodes = nodes;
-    return this.slotsFor(p, change).run(() => this.guard(run, async () => {
+    return this.queue(run, {}, () => this.guard(run, async () => {
       if (run.stopped) return run;
       const contexts = await Promise.all(nodes.map(async node => ({ node, context: await this.manager.text(p, ['context', node, '--implement', '--change', change]) })));
       const res = await this.execute(run, plannerInput({ changeMd: `.uspec/changes/${change}/change.md`, dir: next!.plan!.dir, nodes, existing: p.change(change)!.plans.map(pl => pl.path), contexts }), permissions('splitter'));
@@ -719,8 +908,23 @@ export class AgentManager implements vscode.Disposable {
     this.finish(run, 'recorded', 'split approved');
   }
 
+  /**
+   * With the splitter `off`, the extension's own split: one plan owning every unplanned node, after the
+   * existing plans, recorded as approved without asking.
+   */
+  private async writeSplit(p: Project, change: string, next: NextJson): Promise<SplitPlan[] | undefined> {
+    if (!next.plan) return undefined;
+    const existing = p.change(change)?.plans ?? [];
+    const text = autoSplit(change, next.plan.nodes, existing.map((pl) => pl.plan));
+    const plans = readSplit(text, next.plan.nodes, existing);
+    await fs.promises.writeFile(p.abs(`.uspec/changes/${change}/plan-split.md`), text);
+    await this.approvals.update(this.splitKey(p, change), { hash: this.hash(text), plans });
+    return plans;
+  }
+
   async runPlanner(p: Project, change: string, next?: NextJson, planId?: string): Promise<AgentRun | undefined> {
-    const split = this.split(p, change);
+    let split = this.split(p, change);
+    if (!split && splitterOff(this.sessionConfig())) split = await this.writeSplit(p, change, next ?? (await this.manager.json<NextJson>(p, ['change', 'next', change])));
     if (!split) return this.runSplitter(p, change, next);
     const entry = planId ? split.find(pl => pl.id === planId) : split.find(pl => !p.change(change)?.plans.some(existing => existing.plan === pl.id));
     if (!entry || this.isBusy(p, change, entry.id, 'planner')) return;
@@ -729,7 +933,7 @@ export class AgentManager implements vscode.Disposable {
     const file = `.uspec/changes/${change}/${entry.path}`;
     const run = this.newRun(p, change, 'planner', entry.id);
     run.plans = [file]; run.nodes = entry.nodes;
-    return this.slotsFor(p, change).run(() => this.guard(run, async () => {
+    return this.queue(run, { plan: entry.id }, () => this.guard(run, async () => {
       if (run.stopped) return run;
       const contexts = await Promise.all(entry.nodes.map(async node => ({ node, context: await this.manager.text(p, ['context', node, '--implement', '--change', change]) })));
       const input = plannerInput({ changeMd: `.uspec/changes/${change}/change.md`, dir: `.uspec/changes/${change}/plans`, nodes: entry.nodes, existing: p.change(change)!.plans.map(pl => pl.path), contexts }) + `\nAssigned plan: ${file}\nAssigned nodes: ${entry.nodes.join(', ')}\nAfter: ${entry.after.join(', ')}\nWrite exactly the Assigned plan file and no other plan. Preserve its assigned nodes and dependencies. The split is approved; do not split or rename it.\n`;
@@ -819,7 +1023,7 @@ export class AgentManager implements vscode.Disposable {
     if (!(await this.plansApproved(p, change, p.change(change)!.plans.map(pl => pl.path)))) return undefined;
     const run = this.newRun(p, change, 'implementer', plan);
     run.nodes = info.nodes;
-    return this.slotsFor(p, change).run(() =>
+    return this.queue(run, { plan }, () =>
       this.guard(run, async () => {
         if (run.stopped) return run;
         const contexts = await Promise.all(
@@ -898,15 +1102,27 @@ export class AgentManager implements vscode.Disposable {
         if (next.impact) {
           if (!this.isBusy(p, change, 'change', 'impact')) jobs.push(this.runImpact(p, change));
         } else if (next.triage || next.write.length) {
-          if (next.triage && !this.isBusy(p, change, 'batch')) jobs.push(this.runTriage(p, change, next));
-          // One writer per node, on its documents that aren't already written or waiting for approval.
+          // One writer per node, on its documents that aren't already written or waiting for approval;
+          // one for the nodes whose writers share a session in this round.
+          const round = this.sessions.round(p, change);
+          const config = this.sessionConfig();
+          const writers = new Map<string, { nodes: string[]; docs: string[] }>();
           for (const w of next.write) {
             const node = nodeKey(w.node);
             const docs = w.documents.map((d) => d.document).filter((d) => !this.isBusy(p, change, d));
-            if (docs.length && !this.writing(p, change, node)) jobs.push(this.runWriter(p, change, node, docs));
+            if (!docs.length || this.writing(p, change, node)) continue;
+            const key = resolveSession(config, 'writer', { round, node })?.name ?? `\0${node}`;
+            const g = writers.get(key) ?? { nodes: [], docs: [] };
+            g.nodes.push(node);
+            g.docs.push(...docs);
+            writers.set(key, g);
           }
+          // Writers start first: a round's writers take their session before the triage run that starts the next round.
+          for (const g of writers.values()) jobs.push(this.runWriter(p, change, g.nodes, g.docs));
+          if (next.triage && !this.isBusy(p, change, 'batch')) jobs.push(this.runTriage(p, change, next));
         } else if (next.plan) {
-          const split = this.split(p, change);
+          let split = this.split(p, change);
+          if (!split && splitterOff(this.sessionConfig())) split = await this.writeSplit(p, change, next);
           if (!split) jobs.push(this.runSplitter(p, change, next));
           else for (const pl of split) if (!p.change(change)?.plans.some(x => x.plan === pl.id)) jobs.push(this.runPlanner(p, change, next, pl.id));
         } else if (next.plan_errors.length) {
@@ -967,6 +1183,8 @@ export class AgentManager implements vscode.Disposable {
     this.stopChange(p, change);
     for (const r of this.runs) if (r.p.root === p.root && r.change === change && r.terminal && vscode.window.terminals.includes(r.terminal)) r.terminal.dispose();
     closeChangeSessions(p, change);
+    this.sessions.clear(p.root, change);
+    for (const key of [...this.locks.keys()]) if (key.startsWith(`${this.changeKey(p, change)}|`)) this.locks.delete(key);
   }
 
   stop(run: AgentRun): void {
@@ -981,16 +1199,33 @@ export class AgentManager implements vscode.Disposable {
     await vscode.window.showTextDocument(doc, { preview: false });
   }
 
-  openSession(run: AgentRun): void {
-    if (run.terminal && vscode.window.terminals.includes(run.terminal)) {
-      // After its first turn the agent's session stays open in its terminal; once it exits, it is resumed there.
-      if (agentAlive(run.terminal)) run.resumed ||= run.state !== 'running';
-      else if (run.state !== 'running' && run.sessionId && !run.resumed) {
-        const executable = agentOrComplain(run.provider);
-        if (executable) { run.terminal.sendText((process.platform === 'win32' ? '& ' : '') + [executable, ...resumeArgs(run.provider, run.sessionId), ...(run.proposal ? [`Continue reviewing ${run.proposal}. Apply agreed revisions to that Markdown document, preserving its review format.`] : [])].map(quote).join(' ')); run.resumed = true; }
-      }
-      void revealAgentTerminal(run.terminal);
-    } else if (run.sessionId) { run.terminal = openAgent(run.p, resumeArgs(run.provider, run.sessionId), { name: `${providerLabel(run.provider)} · ${run.title}`, provider: run.provider }); run.resumed = true; }
+  /**
+   * Opens a run's session for the user. After its first turn the agent's session stays open in its
+   * terminal; once it has exited, its exact session is resumed there with its original provider, after
+   * the session's running job.
+   */
+  async openSession(run: AgentRun): Promise<void> {
+    const open = run.terminal && vscode.window.terminals.includes(run.terminal) ? run.terminal : undefined;
+    if (open && (agentAlive(open) || run.state === 'running' || !run.sessionId)) {
+      if (agentAlive(open)) run.resumed ||= run.state !== 'running';
+      return revealAgentTerminal(open);
+    }
+    if (!run.sessionId || run.state === 'running') return;
+    const sessionId = run.sessionId;
+    await this.lockFor(run.p, run.change, run.session?.name ?? `id:${sessionId}`).run(async () => {
+      const terminal = run.terminal && vscode.window.terminals.includes(run.terminal) && !agentAlive(run.terminal) ? run.terminal : undefined;
+      const opened = openAgent(run.p, resumeArgs(run.provider, sessionId), {
+        name: `${providerLabel(run.provider)} · ${run.title}`,
+        provider: run.provider,
+        terminal,
+        change: run.change,
+        prompt: run.proposal ? `Continue reviewing ${run.proposal}. Apply agreed revisions to that Markdown document, preserving its review format.` : undefined,
+      });
+      if (!opened) return;
+      run.terminal = opened;
+      run.resumed = true;
+      this.emitter.fire(run);
+    });
   }
 
   clearFinished(): void {
@@ -1003,7 +1238,7 @@ export class AgentManager implements vscode.Disposable {
       root: r.p.root, change: r.change, created: r.p.change(r.change!)?.created, baseline: r.p.change(r.change!)?.baseline,
       started: r.started, ended: r.ended, role: r.role, item: r.item, state: r.state, outcome: r.outcome, detail: r.detail,
       provider: r.provider, sessionId: r.sessionId, proposal: r.proposal, candidates: r.candidates, starting: r.starting,
-      plans: r.plans, nodes: r.nodes, planApprovals: r.planApprovals,
+      plans: r.plans, nodes: r.nodes, planApprovals: r.planApprovals, session: r.session,
       docs: r.docs.map(({ record, snapshotUri, ...d }) => d),
     })));
   }

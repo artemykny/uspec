@@ -14,7 +14,8 @@ Read `change.md`, every listed document, and the diffs of documents marked `diff
 
 ## Planning
 
-The split is already approved. `Assigned plan:` gives the only file you may
+The split is already approved, or skipped by configuration, in which case one
+plan holds every node to plan. `Assigned plan:` gives the only file you may
 write; `Assigned nodes:` and `After:` give its exact frontmatter. Write that
 one implementation plan. Do not split, merge, rename, generate sibling plans,
 or modify node ownership/dependencies. Other planners may run concurrently.

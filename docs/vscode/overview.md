@@ -1,6 +1,6 @@
 # VS Code extension
 
-The extension shows a uspec project in VS Code: the [spec tree](../method/spec-tree/rules.md) with its types and links, its problems, its open [changes](../method/changes/rules.md) and what is ready in them. It is the orchestrator of a change ([agents](../method/agents/rules.md)): from the Changes view it runs the selected CLI agent on the change, one per item, with the prompts that come with the [skills](../skills/overview.md), records their results, and stops when the user is needed. Skills don't orchestrate; they send the user here. It is a UI over the [CLI](../cli/overview.md): every rule comes from `uspec … --json`, and it never writes `status.yaml` or a `node.yaml` the CLI manages except through a CLI command.
+The extension shows a uspec project in VS Code: the [spec tree](../method/spec-tree/rules.md) with its types and links, its problems, its open [changes](../method/changes/rules.md) and what is ready in them. It is the orchestrator of a change ([agents](../method/agents/rules.md)): from the Changes view it runs the selected CLI agent on the change, one run per item in the session its configuration names, with the prompts that come with the [skills](../skills/overview.md), records their results, and stops when the user is needed. Skills don't orchestrate; they send the user here. It is a UI over the [CLI](../cli/overview.md): every rule comes from `uspec … --json`, and it never writes `status.yaml` or a `node.yaml` the CLI manages except through a CLI command.
 
 ## Projects and the CLI
 
@@ -56,13 +56,13 @@ Change actions: **New change** (asks for a kebab-case name, runs `uspec change n
 
 1. **Describe**: **Open change.md**, **Process change.md**. No agent button here. Processing immediately enters Change plan.
 2. **Change plan**: the impact agent produces `change-plan.md`, a Markdown review document. The file list is read from that document. **Approve**, **Go back**, **Continue with agent**; continuation resumes the same session.
-3. **Triage & write**: review triage recommendations, select files to rewrite and optionally comment per file. No-change files are hidden. Writers run once per ready node; updated files are grouped by node with one agent status/control per node. Each file has an inline diff, **collapsed by default**, and **Open diff in VS Code**, which opens the native diff editor. No aggregate write review document.
-4. **Split plans**: review `plan-split.md`, assigning nodes and dependencies to separate paths such as `plans/cli.md` and `plans/vscode.md`. Approve before generation.
+3. **Triage & write**: review triage recommendations, select files to rewrite and optionally comment per file. No-change files are hidden. Writers run once per ready node, or once for the nodes of a round whose writers share a session; updated files are grouped by node with one agent status/control per node. Each file has an inline diff, **collapsed by default**, and **Open diff in VS Code**, which opens the native diff editor. No aggregate write review document.
+4. **Split plans**: review `plan-split.md`, assigning nodes and dependencies to separate paths such as `plans/cli.md` and `plans/vscode.md`. Approve before generation. With the splitter `off` (see [sessions](#agents)), the extension writes the split itself and records it as approved, so there is nothing to review.
 5. **Implementation plans**: generate each approved plan with its own agent. Independent generation can run in parallel, regardless of implementation dependencies. Review/approve each plan separately; there is no global implementation plan.
 6. **Implement**: per-plan progress, dependencies and **Open agent window**. All current plans must be approved before any implementation starts.
 7. **Complete**: close once the CLI says all work is settled.
 
-Completed steps can be revisited without undoing recorded changes. Agent status appears beside the node or plan it belongs to, including running agents when a later step is viewed. A gap returns to spec work. Every mutation of method state still goes through the CLI.
+Completed steps can be revisited without undoing recorded changes. Agent status appears beside the node or plan it belongs to, with the run's session name, including running agents when a later step is viewed. A gap returns to spec work. Every mutation of method state still goes through the CLI.
 
 **Node Types.** Each type with its description, documents (required or optional, internal, extra, derives from), allowed children and allowed links, from `uspec types`. Types and documents open their `node-type.yaml` and templates.
 
@@ -82,7 +82,7 @@ Completed steps can be revisited without undoing recorded changes. Agent status 
 
 ## Agents
 
-Agents are Claude Code or Codex runs started in native VS Code terminals, hidden until requested. A run is the provider's own interactive TUI (`claude` or `codex`, never `claude -p` or `codex exec`) with the prompt as its first message, so its terminal shows the real agent session, not a log of headless output. The extension never reads the terminal: the agent's hooks (Claude Code's `SessionStart` and `Stop` hooks via `--settings`, Codex's `notify` program) append the session id and each turn's final message to a sidecar file, and the final message of the first turn is the run's result. A run fails when the agent exits or its terminal closes before that turn ends. After its first turn the session stays open in its terminal for the user, and opening a run reveals only its terminal in the editor. Once the agent has exited, Continue resumes its exact session with the original provider in that terminal; a new automated run in the same session ends a still-open one first. When a change closes, the sessions of its runs close with it, as do the sessions Continue with Agent opened for it. Input is never replaced by a webview chat. Each run does one job of the active change, as in [agents](../method/agents/rules.md); the extension is the orchestrator that starts them and records their results, and the user approves through the views.
+Agents are Claude Code or Codex runs started in native VS Code terminals, hidden until requested. A run is the provider's own interactive TUI (`claude` or `codex`, never `claude -p` or `codex exec`) with the prompt as its first message, so its terminal shows the real agent session, not a log of headless output. The extension never reads the terminal: the agent's hooks (Claude Code's `SessionStart` and `Stop` hooks via `--settings`, Codex's `notify` program) append the session id and each turn's final message to a sidecar file, and the final message of the first turn is the run's result. A run fails when the agent exits or its terminal closes before that turn ends. After its first turn the session stays open in its terminal for the user, and opening a run reveals only its terminal in the editor. Once the agent has exited, Continue resumes its exact session with the original provider in that terminal; a new automated run in the same session asks before ending a still-open one (see sessions below). When a change closes, the sessions of its runs close with it, as do the sessions Continue with Agent opened for it. Input is never replaced by a webview chat. Each run does one job of the active change, as in [agents](../method/agents/rules.md); the extension is the orchestrator that starts them and records their results, and the user approves through the views.
 
 **Roles.**
 
@@ -90,8 +90,8 @@ Agents are Claude Code or Codex runs started in native VS Code terminals, hidden
 |---|---|---|---|
 | Impact | the change, while `change next` lists `impact` | `uspec-spec/impact-agent.md` | `Change: <path of change.md>`, then the text output of `uspec tree` |
 | Triage | the triage batch of `change next` | `uspec-spec/triage-agent.md` | the batch as `change next` prints it: `read` and `batch` |
-| Writer | node under `write` | `uspec-spec/writer-agent.md` | `uspec context <node> --document <id>... --change <name>`, one `--document` per document listed for the node |
-| Splitter | settled change with unplanned nodes | `uspec-spec/splitter-agent.md` | change, nodes, existing plans and implementation contexts; returns the Markdown split proposal |
+| Writer | node under `write`, or the nodes of a round whose writers share a session | `uspec-spec/writer-agent.md` | `uspec context <node> --document <id>... --change <name>`, one `--document` per document listed for the node; for several nodes, each node's under `## <node>` |
+| Splitter | settled change with unplanned nodes, unless the splitter is `off` | `uspec-spec/splitter-agent.md` | change, nodes, existing plans and implementation contexts; returns the Markdown split proposal |
 | Planner | one approved split entry | `uspec-spec/planner-agent.md` | `Change:` and `Plans:` (the path of `change.md` and of the plans directory), `Nodes to plan:` one per line, `Existing plans:` one path per line or `none`, then for each node to plan `## <node>` and `uspec context <node> --implement --change <name>` |
 | Implementer | plan under `implement` | `uspec-spec/implementer-agent.md` | `Mode: implement`, or `Mode: check` when `change.md` has `mode: check` in its YAML frontmatter, then `Plan: <path of the plan>`, then for each of its nodes `## <node>` and `uspec context <node> --implement --change <name>` |
 | Reviewer | node | `uspec-review/reviewer-agent.md` | the node's `uspec context` output, as `uspec-review` gives it |
@@ -99,6 +99,33 @@ Agents are Claude Code or Codex runs started in native VS Code terminals, hidden
 The provider is selected in `uspec.agents.provider` (Claude Code by default). Codex runs take the thread id and final agent message from its `agent-turn-complete` notification. Each run persists its provider; changing settings affects new runs, never the provider used to resume an existing session. Codex models have separate settings, so Claude aliases are never passed to Codex. Codex uses read-only sandboxing for impact, triage, splitter and review, and workspace-write for writer, planner and implementer, with approval prompts disabled. File scope is a prompt instruction for Codex, not the per-file permission enforcement available in Claude. Codex retains the user’s CLI configuration and authentication.
 
 A prompt is read from the selected provider’s skill directory (`.claude/skills/` for Claude, `.agents/skills/` for Codex), then the corresponding directory in the user’s home, then the copy of [skills/](../../skills/) bundled with the extension.
+
+**Sessions.** Every run is in a session, named per role by `uspec.agents.sessions` (see [agents](../method/agents/rules.md)). Its value is a preset or a map from role to session name. The roles that can be named are `impact`, `triage`, `writer`, `splitter`, `planner` and `implementer`; the reviewer always gets a new session, since it isn't part of a change. Jobs of one change whose names resolve to the same name share one session: the next job resumes it with its own prompt. A name not used yet in the change starts a new session, and a role without a name gets a new session for every job. The same name in two changes is two sessions; a change's sessions close when it closes.
+
+| Preset | Map | Meaning |
+|---|---|---|
+| `isolated` (default) | `{}` | Every job in a new session. |
+| `simple` | `{ "impact": "explore", "triage": "explore", "writer": "explore", "splitter": "off", "planner": "explore", "implementer": "explore" }` | Everything in the explore session, one plan. |
+| `complex` | `{ "impact": "explore", "triage": "spec", "writer": "spec", "splitter": "build", "planner": "plan-{plan} from build", "implementer": "plan-{plan}" }` | One session per stage, one per plan. |
+
+A map is the whole configuration: it isn't merged with a preset, and roles it leaves out get a new session per job.
+
+- **Placeholders** make a name per item: `{round}` (triage, writer) is the triage/write round of the change, from 1; `{node}` (writer) the node it writes; `{plan}` (planner, implementer) the plan id. Round 1 writes the starting documents; every triage run starts the next round, and writers belong to the round of the last triage run before them. Round numbers persist with the change across reloads.
+- **`explore`** is the user's interactive `uspec-spec` session of the change, the main agent (the explore stage in settings and views). Start Change with Agent and Continue with Agent capture its session id through the agent's hooks, as runs do, and keep it with the change across reloads. If the change has no explore session yet (`change.md` was written by hand or outside VS Code), the first job named `explore` starts a new session, which becomes the change's explore session.
+- **`"splitter": "off"`** runs no splitter: the extension writes `plan-split.md` itself with one entry, `plans/<change>.md`, owning every unplanned node, and records it as approved without asking. If unplanned nodes appear later (after a gap), the next entry is `plans/<change>-2.md`, after the existing plans, and so on. `uspec.agents.approvePlans` still applies.
+- **Forks.** `"<name> from <session>"`: the first time `<name>` is used, its session starts as a fork of `<session>`, a plain name used by an earlier stage, or `explore`: it has that session's history, and the two go on separately. Claude Code forks with `--resume <id> --fork-session`. A provider that can't fork starts a new session, and the run log says so.
+
+The setting is checked when the extension loads and when it changes. An unknown preset or role, a placeholder not allowed for the role, `from` naming a session no earlier stage uses, `off` on a role other than `splitter`, or a planner forking from the splitter's session while the splitter is `off` shows a warning that names the setting and what is wrong (`uspec.agents.sessions: {plan} can't be used by triage. Agents run in new sessions until this is fixed.`), and every job runs in a new session until it is fixed.
+
+**Shared sessions.**
+
+- **One job at a time per session.** Jobs that resolve to the same session wait for each other, in the order the run loop starts them. Jobs in different sessions run in parallel, at most `uspec.agents.maxParallel` per change.
+- **Writers sharing a session in a round are one job.** Its input has each node's `uspec context` under `## <node>`, it may edit every one of those documents, and its result has one block per document. Approval, rejection and recording stay per document. Names with `{node}` keep one job per node.
+- **Resuming.** A job in an existing session starts the provider with `--resume <id>` (Codex: `resume <id>`), its own prompt and input, and its own role's permissions: tools, allowed rules, edit scope and Codex sandbox, never those of an earlier job in the session. It runs in the terminal of the session's last job. If that terminal still runs the agent (the user is talking to it, or it is the explore session), the extension asks first: **End and Continue** ends it and starts the job; **Cancel** leaves the job not started and stops the run loop.
+- **Re-read note.** A job in a session that already did a job is told in its system prompt that files may have changed since its earlier jobs (the user edited or rejected them, other runs wrote them), to re-read anything before relying on it, and that only this job's input, permissions and result format apply.
+- **Model.** A job runs on its role's model, except in a session more than one role uses: there every job runs on `uspec.agents.model` (Codex: `uspec.agents.codexModel`), so the session doesn't switch models. `uspec.agents.triageModel` applies only to a session only triage uses.
+- **Provider.** A session keeps the provider it started with, even after `uspec.agents.provider` changes.
+- **Revisions** (Continue with Agent on a proposal, revising a writer's document) resume the session that produced them.
 
 **Claude permissions.** A run runs in `auto` permission mode (approve for me): its allowed rules run without asking, and Claude Code's classifier approves or blocks anything else instead of asking the user. It has only the tools in the table. MCP servers are not loaded. Its system prompt says so, and names what it may edit, so it stays within its scope and doesn't spend turns on commands that may be blocked (a loop or a `git -C` doesn't match the rules).
 
@@ -114,7 +141,7 @@ A prompt is read from the selected provider’s skill directory (`.claude/skills
 
 - Impact: saves `change-plan.md` in the documented Markdown format. Every named document is validated against the tree; the UI reads its file list from that document. Approval records selected entries as affected.
 - Triage: saves a Markdown proposal with one decision per candidate. Approval records the reviewed decisions through `change set`. Missing, duplicate or unknown candidates prevent approval. No-change entries are hidden in the UI, retained in the proposal.
-- Splitter: saves `plan-split.md`, validates node coverage and dependencies, then waits for approval before any planner starts.
+- Splitter: saves `plan-split.md`, validates node coverage and dependencies, then waits for approval before any planner starts. With the splitter `off`, the extension writes `plan-split.md` itself and records it as approved.
 - Writer: one result per document, in the order given, each handled on its own. `updated` is recorded as `updated` once approved (see below), and anything the writer adds after its results is kept as notes; `no change` is recorded as `no-change` with its reason; `blocked` records nothing and is shown to the user with what needs to change upstream. A result that says `updated` without the document changing, or `no change` after it changed, records nothing, and so does a document left without a result.
 - Planner: `planned` reloads the change: its plans come from `change next`, which reports plan errors. With `uspec.agents.approvePlans`, the run waits for the user to read the plans: **Approve** lets implementation start. `failed` records nothing and is shown.
 - Implementer: `done` records each of the plan's nodes as `done`; `gap` and `failed` record nothing and are shown.
@@ -124,11 +151,11 @@ Anything else is a failed run, which records nothing.
 
 **Approval.** The starting documents and, with `uspec.agents.approvePlans`, the plans wait for the user as above. Before a writer runs, its documents are saved. An `updated` result that is user-visible (or every one, or none, per `uspec.agents.approveWrites`) waits for the user: **Show diff** compares the document with what it was, **Approve** records `updated`, **Reject** puts the saved content back and leaves the document `affected`. Once nothing of the change waits for the user, approving offers to run its agents again.
 
-**Running a change.** **Run agents** on a change repeats rounds until nothing is ready or something needs the user: each round runs `change next` and starts what it lists, in the order of the change's steps: the impact run; else the triage run and a writer per node with documents to write; else a splitter awaiting approval, then one planner per approved split entry; else an implementer per ready plan; at most `uspec.agents.maxParallel` at once, and waits for them. It stops when a run waits for approval, is blocked, finds a gap or fails, when a triage run records nothing, or when `change next` reports plan errors. Before the impact run, it asks first when `change.md` is still the template. Running agents on a change that isn't the oldest open one asks first, since changes are processed oldest first. Single items run from their own actions, and an item `change next` doesn't list as ready asks first; an item already running isn't started twice. **Stop** ends the change's runs.
+**Running a change.** **Run agents** on a change repeats rounds until nothing is ready or something needs the user: each round runs `change next` and starts what it lists, in the order of the change's steps: the impact run; else the triage run and a writer per node with documents to write (one for the nodes whose writers share a session); else a splitter awaiting approval, or with the splitter `off` the extension's own split, then one planner per approved split entry; else an implementer per ready plan; at most `uspec.agents.maxParallel` at once, jobs of one session one after another, and waits for them. It stops when a run waits for approval, is blocked, finds a gap or fails, when a triage run records nothing, or when `change next` reports plan errors. Before the impact run, it asks first when `change.md` is still the template. Running agents on a change that isn't the oldest open one asks first, since changes are processed oldest first. Single items run from their own actions, and an item `change next` doesn't list as ready asks first; an item already running isn't started twice. **Stop** ends the change's runs.
 
-**Logs.** Every run has a log, live while it runs: the prompt's input, the agent's messages and tool calls, denied permissions, the result, its cost and session id. **Open agent window** reveals the run’s native terminal; **Continue with agent** resumes that exact session. Session identities and pending reviews survive extension reloads.
+**Logs.** Every run has a log, live while it runs: the prompt's input, the agent's messages and tool calls, denied permissions, the result, its cost and session id, and its session name with whether the session was new, resumed or forked (and from which), as in `session: explore (resumed)`. **Open agent window** reveals the run’s native terminal; **Continue with agent** resumes that exact session. Session identities and pending reviews survive extension reloads.
 
-**Interactive sessions.** Start Change with Agent and Continue with Agent open the selected CLI in a native terminal in the editor and ask it to use the `uspec-spec` skill. Install Skills copies the bundled `uspec-spec` and `uspec-review` skills into `.claude/skills/` for Claude or `.agents/skills/` for Codex. Continuing a recorded run always uses its original provider and exact session id (`claude --resume` or `codex resume`), including after a settings change or extension reload.
+**Interactive sessions.** Start Change with Agent and Continue with Agent open the selected CLI in a native terminal in the editor and ask it to use the `uspec-spec` skill; its session id is kept as the change's explore session. Install Skills copies the bundled `uspec-spec` and `uspec-review` skills into `.claude/skills/` for Claude or `.agents/skills/` for Codex. Continuing a recorded run always uses its original provider and exact session id (`claude --resume` or `codex resume`), including after a settings change or extension reload.
 
 ## Settings
 
@@ -140,8 +167,9 @@ Anything else is a failed run, which records nothing.
 | `uspec.agents.codexModel` | empty | Codex model; empty uses its CLI default. |
 | `uspec.agents.codexTriageModel` | empty | Codex triage model; empty uses its CLI default. |
 | `uspec.claudePath` | empty | Claude Code. Empty: `claude` on the `PATH`, then the binary bundled with the Claude Code extension. |
-| `uspec.agents.model` | empty | Model for impact, writer, planner, implementer and reviewer runs; empty uses Claude Code's default. |
-| `uspec.agents.triageModel` | `sonnet` | Model for triage runs. |
+| `uspec.agents.model` | empty | Model for impact, writer, planner, implementer and reviewer runs, and for every run in a session more than one role uses; empty uses Claude Code's default. |
+| `uspec.agents.triageModel` | `sonnet` | Model for triage runs in a session only triage uses. |
+| `uspec.agents.sessions` | `isolated` | Which jobs of a change share an agent session: `isolated`, `simple`, `complex`, or a map from role to session name (see sessions under Agents). |
 | `uspec.agents.maxParallel` | 4 | Agent runs at once per change. |
 | `uspec.agents.approveWrites` | `user-visible` | Which writer updates wait for approval: `user-visible`, `always` or `never`. |
 | `uspec.agents.approvePlans` | true | Wait for the user to read the plans before implementing them. |
@@ -236,7 +264,8 @@ Files recorded no-change are omitted. There is no `write-review.md`.
 
 ### Terminals
 
-Automated agent runs start in ordinary hidden terminals. Open agent
+Automated agent runs start in ordinary hidden terminals; a run that resumes
+a shared session runs in the terminal of that session's last job. Open agent
 window reveals the selected terminal in the editor. While running, it shows
 that run; after completion, continuation uses `--resume` with its saved session
 id. No custom terminal input or webview chat is used. Closing a terminal stops
