@@ -56,7 +56,7 @@ function answerWarnings(): { shown: string[]; restore(): void } {
   window.showWarningMessage = async (message: string, ...rest: any[]) => {
     shown.push(message);
     const items = rest.filter((x) => typeof x === 'string');
-    return items.find((x) => x === 'End and Continue' || x === 'Run Anyway');
+    return items.find((x) => x === 'End and Continue' || x === 'Run Anyway' || x === 'Accept');
   };
   return { shown, restore: () => { window.showWarningMessage = original; } };
 }
@@ -160,6 +160,7 @@ describe('uspec extension', () => {
     const info = p.nodes.get(node)!;
     const documents = info.documents;
     const issues = p.issues;
+    const { nodeDrift, docDrift } = p;
     const decorations = new Decorations(api.manager);
     try {
       const apiDoc: SpecEl = { kind: 'doc', p, node, doc: 'api' };
@@ -176,15 +177,21 @@ describe('uspec extension', () => {
       const icon = api.specTree.getTreeItem({ kind: 'node', p, node }).iconPath as vscode.ThemeIcon;
       assert.strictEqual(icon.id, 'error');
       assert.deepStrictEqual(icon.color, new vscode.ThemeColor('list.errorForeground'));
-      p.drift.set(node, 'uncommitted code changes without a spec change');
+      p.nodeDrift = new Map([[node, ['code changed since it was last verified']]]);
+      p.docDrift = new Map([[`${node}/logic.md`, ['product/support/refunds/rules.md changed since it was last checked']]]);
       api.manager.notify(p);
       const badge = decorations.provideFileDecoration(p.uriOf(p.nodeDir(node)))!;
       assert.strictEqual(badge.badge, 'D');
       assert.deepStrictEqual(badge.color, new vscode.ThemeColor('list.warningForeground'));
+      const docBadge = decorations.provideFileDecoration(p.uriOf(p.docFile(`${node}/logic.md`)))!;
+      assert.strictEqual(docBadge.badge, 'D');
+      assert.match(String(docBadge.tooltip), /rules\.md changed since it was last checked/);
+      assert.strictEqual(decorations.provideFileDecoration(p.uriOf(p.docFile(`${node}/storage.md`)))?.badge, undefined);
     } finally {
       info.documents = documents;
       p.issues = issues;
-      p.drift.delete(node);
+      p.nodeDrift = nodeDrift;
+      p.docDrift = docDrift;
       decorations.dispose();
       api.manager.notify(p);
     }
@@ -227,11 +234,12 @@ describe('uspec extension', () => {
     await vscode.window.showTextDocument(vscode.Uri.file(file(`docs/${node}/node.yaml`)));
     await waitFor('metadata target', () => api.nodeView.target?.node === node && !api.nodeView.target.doc);
     const editor = vscode.window.activeTextEditor;
-    p.drift.set(node, 'test drift');
+    const nodeDrift = p.nodeDrift;
+    p.nodeDrift = new Map([[node, ['test drift']]]);
     api.manager.notify(p);
     await waitFor('drift refresh', () => panel.webview.html.includes('test drift'));
     assert.strictEqual(vscode.window.activeTextEditor, editor);
-    p.drift.delete(node);
+    p.nodeDrift = nodeDrift;
     api.manager.notify(p);
     panel.dispose();
   });
@@ -310,7 +318,77 @@ describe('uspec extension', () => {
     assert.strictEqual(original.split('\n')[d.range.start.line].trim(), '- system/domain-model');
     fs.writeFileSync(yaml, original);
     api.manager.refresh(p, 0);
-    await waitFor('the tree to be valid again', () => p.issues.length === 0 && vscode.languages.getDiagnostics(vscode.Uri.file(yaml)).length === 0);
+    await waitFor('the tree to be valid again', () => p.issues.length === 0 && !vscode.languages.getDiagnostics(vscode.Uri.file(yaml)).some((x) => x.source === 'uspec'));
+  });
+
+  it('reports the drift of nodes and documents, as problems too', async () => {
+    // The example has no .uspec/checks.yaml: every item was never checked.
+    const node = 'system/services/payments';
+    await api.manager.load(p);
+    assert.deepStrictEqual(p.nodeDrift.get(node), ['never checked']);
+    assert.deepStrictEqual(p.docDrift.get(`${node}/logic.md`), ['never checked']);
+    const drift = (rel: string) => vscode.languages.getDiagnostics(vscode.Uri.file(file(rel))).find((d) => d.source === 'uspec drift' && d.message === 'drift: never checked');
+    await waitFor('the drift problem on node.yaml', () => drift(`docs/${node}/node.yaml`));
+    await waitFor('the drift problem on logic.md', () => drift(`docs/${node}/logic.md`));
+    assert.match(String(api.specTree.getTreeItem({ kind: 'node', p, node }).contextValue), /^uspec\.node;code;child;drift$/);
+    assert.match(String(api.specTree.getTreeItem({ kind: 'doc', p, node, doc: 'logic' }).contextValue), /^uspec\.doc.*;drift$/);
+  });
+
+  it('accepts the drift of a node and of a document after saying what that means', async () => {
+    const node = 'system/services/payments';
+    const warnings = answerWarnings();
+    try {
+      await vscode.commands.executeCommand('uspec.drift.accept', { p, node });
+      await vscode.commands.executeCommand('uspec.drift.accept', { p, node, doc: 'logic' });
+    } finally {
+      warnings.restore();
+    }
+    await api.manager.load(p);
+    assert.ok(!p.nodeDrift.has(node), p.nodeDrift.get(node)?.join());
+    assert.ok(!p.docDrift.has(`${node}/logic.md`), p.docDrift.get(`${node}/logic.md`)?.join());
+    assert.strictEqual(warnings.shown.length, 2);
+    assert.match(warnings.shown[0], /verified against its spec/);
+    assert.match(warnings.shown[1], /checked against what it depends on/);
+    assert.ok(warnings.shown.every((m) => /nothing is triaged or implemented/.test(m)));
+    assert.ok(fs.existsSync(file('.uspec/checks.yaml')));
+    assert.deepStrictEqual(p.docDrift.get(`${node}/api.md`), ['never checked']);
+    assert.ok([...p.nodeDrift.keys()].some((n) => n !== node));
+
+    // A document that doesn't drift: says so and runs nothing.
+    const window = vscode.window as { showInformationMessage: (...args: any[]) => Thenable<unknown> };
+    const original = window.showInformationMessage;
+    const infos: string[] = [];
+    window.showInformationMessage = async (message: string) => { infos.push(message); return undefined; };
+    const before = fs.readFileSync(file('.uspec/checks.yaml'), 'utf8');
+    const asked = answerWarnings();
+    try {
+      await vscode.commands.executeCommand('uspec.drift.accept', { p, node, doc: 'logic' });
+    } finally {
+      window.showInformationMessage = original;
+      asked.restore();
+    }
+    assert.deepStrictEqual(infos, [`${node}/logic.md doesn’t drift.`]);
+    assert.deepStrictEqual(asked.shown, []);
+    assert.strictEqual(fs.readFileSync(file('.uspec/checks.yaml'), 'utf8'), before);
+  });
+
+  it('finds code drift after accepting, until the code is back as it was verified', async function () {
+    this.timeout(60_000);
+    const node = 'system/services/payments';
+    const added = file('services/payments/refactor.ts');
+    try {
+      assert.ok(!p.nodeDrift.has(node));
+      fs.mkdirSync(path.dirname(added), { recursive: true });
+      fs.writeFileSync(added, 'export const window = 14;\n');
+      await waitFor('code drift', () => p.nodeDrift.get(node)?.includes('code changed since it was last verified'));
+      fs.rmSync(added);
+      await waitFor('the code drift to clear', () => !p.nodeDrift.has(node));
+    } finally {
+      // Back to an example without records, as the later tests expect.
+      fs.rmSync(file('services'), { recursive: true, force: true });
+      fs.rmSync(file('.uspec/checks.yaml'), { force: true });
+      await api.manager.load(p);
+    }
   });
 
   it('runs a change with agents from change.md to close', async function () {

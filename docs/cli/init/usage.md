@@ -12,7 +12,7 @@ Creates a uspec project in the current directory: `.uspec/` with its node types,
 2. Puts the node types in `.uspec/node-types/`:
    - With `--preset`, copies the preset's node types. A preset is a local directory or `github:<owner>/<repo>[/<path>][@<ref>]`, cloned with git (shallow, at `<ref>` if given) into a temporary directory that is removed afterwards. The node types are taken from the first of `.uspec/node-types/`, `node-types/` or the preset directory itself that contains a type directory (one with a `node-type.yaml`). Files and directories starting with `.` are not copied.
    - Without it, writes one type, `basic`: a Basic node has an `overview` document and may have `basic` children.
-3. Writes `.uspec/config.yaml` with `spec_root: docs` and creates `.uspec/changes/`.
+3. Writes `.uspec/config.yaml` with `spec_root: docs`, creates `.uspec/changes/` and writes an empty `.uspec/checks.yaml` (no item recorded as checked yet; `uspec drift accept` records them).
 4. Loads the node types. They must be valid (see [node types](../../method/node-types/)).
 5. Picks the root type: the type no other type lists as a child. If several qualify and one of them is `root`, it is `root`.
 6. Creates the root node: `docs/node.yaml` with `type: <root type>`, and one `docs/<document-id>.md` per document of the root type, each a copy of its template's body. An existing `docs/` directory is reused.

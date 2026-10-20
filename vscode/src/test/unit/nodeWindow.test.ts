@@ -33,7 +33,7 @@ function harness() {
   const p = {
     root: '/project', rootLabel: 'docs', nodes: new Map([['payments', { documents: ['logic'], deps: [], code: ['payments/'] }]]),
     typeOf: () => undefined, typeDoc: () => undefined, nodeDir: (node: string) => `docs/${node}`, hasCode: () => true,
-    downstream: new Map(), drift: new Map(), nodeIssues: () => [],
+    downstream: new Map(), nodeDrift: new Map(), docDrift: new Map(), nodeIssues: () => [],
   };
   const target = { p, node: 'payments' } as unknown as NodeTarget;
   const pending: ((ctx: ContextJson) => void)[] = [];

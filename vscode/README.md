@@ -15,7 +15,7 @@ Works with [uspec](../docs/overview.md) projects: the spec tree with its types a
 - **Markdown reviews**: review the change plan and triage proposal, choose files, add comments, then approve. Updated files are grouped by node; inline diffs start collapsed and **Open diff in VS Code** opens the native diff editor.
 - **Independent plans**: approve the split into files such as `plans/cli.md` and `plans/vscode.md`, then run one planner per file. Review every generated plan before implementation; one implementer handles each ready plan.
 - **Native terminals**: The selected agent runs in hidden VS Code terminals. Agent controls live beside their node or plan. Open the selected terminal in the editor, or continue its original session. Pending reviews and session ids survive extension reloads.
-- **Problems, badges and editing help**: `uspec validate` errors on the right line, drift warnings, change states in the Explorer, completion and links in `node.yaml`, `node-type.yaml` and template frontmatter, and a line at the top of each spec document with its template and actions.
+- **Problems, badges and editing help**: `uspec validate` errors on the right line, drift warnings on documents and nodes that can be accepted, change states in the Explorer, completion and links in `node.yaml`, `node-type.yaml` and template frontmatter, and a line at the top of each spec document with its template and actions.
 
 ## Agents and permissions
 

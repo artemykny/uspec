@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CliNotFoundError, Lock, resolveCli, runJson, runText } from './core/cli';
+import { parseDrift } from './core/drift';
 import type {
   ChangeCounts,
   ChangeListJson,
@@ -74,6 +75,13 @@ export interface FileTarget {
   code?: boolean;
 }
 
+/** A drifting node (without `doc`) or document, with every reason `uspec drift` gives for it. */
+export interface DriftItem {
+  node: string;
+  doc?: string;
+  reasons: string[];
+}
+
 export class Project {
   readonly uri: vscode.Uri;
   readonly name: string;
@@ -83,7 +91,10 @@ export class Project {
   types = new Map<string, NodeTypeJson>();
   changes: ChangeData[] = [];
   issues: Issue[] = [];
-  drift = new Map<string, string>();
+  /** Code and spec drift, by node. */
+  nodeDrift = new Map<string, string[]>();
+  /** Dependency drift, by document key. */
+  docDrift = new Map<string, string[]>();
   /** Template bodies by `<type>/<document>`. */
   templateBodies = new Map<string, string>();
   /** Documents nobody has written yet, by document key. */
@@ -177,6 +188,18 @@ export class Project {
   /** A document's state in the active change. */
   docState(key: string): StatusDocJson | undefined {
     return this.activeChange?.docs.get(key);
+  }
+
+  /** A node's drifting items: the node itself, then its documents in its type's order. */
+  drifts(node: string): DriftItem[] {
+    const out: DriftItem[] = [];
+    const own = this.nodeDrift.get(node);
+    if (own) out.push({ node, reasons: own });
+    for (const doc of this.nodes.get(node)?.documents ?? []) {
+      const reasons = this.docDrift.get(docKey(node, doc));
+      if (reasons) out.push({ node, doc, reasons });
+    }
+    return out;
   }
 
   /** Validation errors about a node: its directory, its node.yaml, or a file or folder directly in it that isn't a node. */
@@ -447,8 +470,8 @@ export class ProjectManager implements vscode.Disposable {
       cfg.get('drift.enabled', true) ? this.json<DriftJson>(p, ['drift']).catch(() => undefined) : undefined,
     ]);
     p.issues = validate?.errors ?? [];
-    if (drift) p.drift = new Map(drift.drift.map((d) => [nodeKey(d.node), d.reason]));
-    else if (!cfg.get('drift.enabled', true)) p.drift = new Map();
+    if (drift) setDrift(p, drift);
+    else if (!cfg.get('drift.enabled', true)) setDrift(p, { drift: [] });
 
     await this.loadFiles(p);
   }
@@ -499,8 +522,7 @@ export class ProjectManager implements vscode.Disposable {
   private async reloadDrift(p: Project): Promise<void> {
     if (!this.config().get('drift.enabled', true)) return;
     try {
-      const drift = await this.json<DriftJson>(p, ['drift']);
-      p.drift = new Map(drift.drift.map((d) => [nodeKey(d.node), d.reason]));
+      setDrift(p, await this.json<DriftJson>(p, ['drift']));
       this.emitter.fire(p);
     } catch {
       // Reported by the next full load.
@@ -511,6 +533,12 @@ export class ProjectManager implements vscode.Disposable {
   allNodes(): { project: Project; node: NodeInfo }[] {
     return this.projects.flatMap((p) => [...p.nodes.values()].map((node) => ({ project: p, node })));
   }
+}
+
+function setDrift(p: Project, json: DriftJson): void {
+  const { nodes, docs } = parseDrift(json);
+  p.nodeDrift = nodes;
+  p.docDrift = docs;
 }
 
 export async function readText(file: string): Promise<string | undefined> {

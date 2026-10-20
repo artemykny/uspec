@@ -6,7 +6,7 @@ The extension shows a uspec project in VS Code: the [spec tree](../method/spec-t
 
 **Projects.** Every directory in the workspace that holds `.uspec/` is a project, nested ones included; a file belongs to the nearest project above it, as for the CLI. The views show one root per project when there are several.
 
-**Calling the CLI.** The extension runs `uspec --json <command>` in the project root and reads the JSON. A command that fails (`{"error": …}`, exit code 1) shows its message; `validate` and `drift` exit with 1 when they find something, which is output, not a failure. Commands that change files (`node`, `change new | set | close`, `init`) run one at a time per project, so two `change set` calls never write `status.yaml` at once.
+**Calling the CLI.** The extension runs `uspec --json <command>` in the project root and reads the JSON. A command that fails (`{"error": …}`, exit code 1) shows its message; `validate` and `drift` exit with 1 when they find something, which is output, not a failure. Commands that change files (`node`, `change new | set | close`, `drift accept`, `init`) run one at a time per project, so two `change set` calls never write `status.yaml` at once.
 
 **What is loaded.** On start and after any file in `.uspec/` or the spec root changes (debounced), the extension loads `tree`, `types`, `change list` and, for each open change, `change status` and `change next`, then runs `validate` and `drift`. The views update from it, so they follow a skill or an agent live as it works through a change.
 
@@ -23,6 +23,7 @@ The extension adds a uspec container to the activity bar with one explorer and e
 - **New child node**: pick one of the types the parent's type allows as children, enter a name, pick links from the nodes whose types the new type may derive from, and enter code paths if the type has `code: true`; runs `uspec node new` and opens the new node's first document.
 - **Move/Rename**: enter the new path; runs `uspec node move` and reports the links it rewrote.
 - **Remove**: asks first; runs `uspec node remove` and shows the links that block it.
+- **Accept drift**, on a drifting node or document: asks first, saying what accepting means: the item is recorded as checked as it is now (a document against what it depends on, a node's code against its spec), without a change and without anything being triaged or implemented; runs `uspec drift accept` on it.
 - **Open node.yaml**, **Reveal code paths**, **Search in code paths**, **Copy path**, **Show context**, **Review with Agent**.
 
 **Go to Node** is a quick pick over every node and document of every project.
@@ -37,7 +38,7 @@ From top to bottom it shows:
 - **Downstream**: the nodes that link to this one, worked out from `uspec tree`, each with what its link narrows to; a click opens its overview.
 - **Code paths**: each path; a click reveals it in the Explorer. A type without `code: true` says **No code**.
 - **Active change**: the active change's name, then each of the node's documents in it with its state (`pending`, `affected`, `updated` or `no-change`) and its reason, or the rules that reached it, and the node's implementation state (`pending` or `done`). A node the change hasn't reached says **Not in this change**; without an open change, **No active change**.
-- **Drift**: the reason `uspec drift` gives for the node.
+- **Drift**: every reason `uspec drift` gives for the node and its documents, each with the item it is about (the node, or the document's name); a drifting item has **Accept drift**, as in the Spec Tree.
 - **Context**: what `uspec context` lists with the active change, grouped as the CLI groups it (instructions first, then the files under their group names). For a node with code paths, a **Write** / **Implement** switch beside the heading chooses between the context of writing the current document and that of implementing the node; without a current document only **Implement** is offered, and a node with neither says so. A file opens on click, a section at its heading; a file marked `diff since <commit>` opens as a diff. **Copy context**, beside the heading, copies the CLI's text output, or that output followed by every listed file's content and every diff, to paste into any agent.
 
 Every section has a heading and says **None** when empty. File rows show the file's name first and its path as secondary text; long paths truncate with the full path on hover. States and flags are short text labels, never color alone, with their meaning on hover. Sections are separated by subtle theme-colored dividers with even spacing, in one column; on a narrow editor paths and labels wrap and section actions move below their heading. The overview uses the editor's background, font and theme colors in light, dark and high contrast themes, and every action is reachable by keyboard with a visible focus indicator.
@@ -68,11 +69,11 @@ The window's footer, on every step, has **Sessions: <mode>**, which shows the ch
 
 **Status bar.** The active change and what is next (`refund-window · find starting documents`, `refund-window · 2 to triage · 1 to write`, `refund-window · plan`, `refund-window · 2 plans to implement`), and the node of the active file. Clicking the active change opens its change state window.
 
-**Badges.** In the Spec Tree and the Explorer, documents of the active change carry their state (`P` pending, `A` affected, `U` updated, `✓` no-change), nodes under implementation `I` until done, and drifting nodes and their code paths `D`. Unwritten documents (empty, or still the template's body) are dimmed.
+**Badges.** In the Spec Tree and the Explorer, documents of the active change carry their state (`P` pending, `A` affected, `U` updated, `✓` no-change), nodes under implementation `I` until done, and drifting nodes, their code paths and drifting documents `D`. Unwritten documents (empty, or still the template's body) are dimmed.
 
 ## Editing
 
-**Problems.** `validate` errors go to the Problems panel. An error about a file goes on that file; an error about a node goes on its `node.yaml`, or on its parent's when it has none. The squiggle goes on the line the error names when it can be found: the `type:` line for an unknown or disallowed type, the link for a broken or disallowed link, the `code:` line for code paths, the type id in `node-type.yaml`, the line a YAML error gives. A cycle of links puts one error on each link of the cycle. Drift adds a warning on the node's `node.yaml`. Lines of a document that are still template guidance (a line of the template's body with `<…>` text) are flagged as information.
+**Problems.** `validate` errors go to the Problems panel. An error about a file goes on that file; an error about a node goes on its `node.yaml`, or on its parent's when it has none. The squiggle goes on the line the error names when it can be found: the `type:` line for an unknown or disallowed type, the link for a broken or disallowed link, the `code:` line for code paths, the type id in `node-type.yaml`, the line a YAML error gives. A cycle of links puts one error on each link of the cycle. Drift adds a warning with its reason, one per reason: on the node's `node.yaml` for code and spec drift, on the document for dependency drift. Lines of a document that are still template guidance (a line of the template's body with `<…>` text) are flagged as information.
 
 **`node.yaml`.** Completion for the keys; for `type`, the types the parent's type allows; for `derives_from`, the nodes whose types this node's type may derive from, then, after a node and `/`, its exposed documents, and after a document and `#`, the anchors of its sections; for `code`, paths in the project. Hover on the type, a link or a code path describes it, a section link with the section's first lines; Ctrl+click opens a link's `node.yaml`, its document, or its document at the section's heading, or reveals a code path.
 

@@ -51,8 +51,27 @@ export interface ValidateJson {
   errors: Issue[];
 }
 
+/** One reason an item drifts: dependency drift of a document, or code or spec drift of a node. */
+export interface DriftEntryJson {
+  kind: 'dependency' | 'code' | 'spec';
+  /** The node, or the document's node; "." for the root. */
+  node: string;
+  /** The document's key, for dependency drift only. */
+  document: string | null;
+  path: string | null;
+  /** The upstream unit, for dependency drift only; null for a document never checked. */
+  unit: string | null;
+  reason: string;
+}
+
 export interface DriftJson {
-  drift: { node: string; reason: string }[];
+  drift: DriftEntryJson[];
+}
+
+/** What `uspec drift accept` recorded. */
+export interface AcceptJson {
+  checked: { document: string; path: string }[];
+  verified: { node: string }[];
 }
 
 export interface ChangeCounts {

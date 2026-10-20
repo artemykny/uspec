@@ -15,7 +15,7 @@ use crate::project::{show_node, Project};
 use crate::sections;
 use crate::tree::{split_doc, Tree};
 use crate::types::Types;
-use crate::{columns, validate, Out};
+use crate::{columns, drift, validate, Out};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DocState {
@@ -654,11 +654,26 @@ pub fn cmd_close(project: &Project, types: &Types, tree: &Tree, name: &str, out:
         }
         bail!("validate found {} errors; fix them before closing", issues.len());
     }
+    // Every document of the change is settled, and every node done: record them as checked.
+    let docs: Vec<String> = s.documents.keys().filter(|k| tree.doc_exists(k)).cloned().collect();
+    let nodes: Vec<String> = s
+        .implementation
+        .keys()
+        .map(|k| project.to_spec_rel(k))
+        .filter(|n| tree.has_code(types, n) && tree.get(n).is_some_and(|n| !n.code.is_empty()))
+        .collect();
+    let recorded = drift::record(project, types, tree, &docs, &nodes)?;
     fs::remove_dir_all(&c.dir)?;
+    let (checked, verified) = drift::recorded_json(project, &recorded);
     if out.json {
-        return out.print(json!({ "change": name, "closed": true }));
+        return out.print(json!({ "change": name, "closed": true, "checked": checked, "verified": verified }));
     }
     println!("validate: ok");
+    println!(
+        "recorded .uspec/checks.yaml: {} documents checked, {} nodes verified",
+        checked.len(),
+        verified.len()
+    );
     println!("removed {}/", project.rel(&c.dir));
     Ok(())
 }

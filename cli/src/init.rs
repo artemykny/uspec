@@ -5,6 +5,7 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 use serde_json::json;
 
+use crate::drift::Checks;
 use crate::project::Project;
 use crate::types;
 use crate::Out;
@@ -119,6 +120,7 @@ pub fn cmd_init(preset: Option<&str>, out: &Out) -> Result<()> {
 fn create_root(root: &Path, spec_dir: &Path, out: &Out) -> Result<()> {
     fs::write(root.join(".uspec/config.yaml"), "spec_root: docs\n")?;
     fs::create_dir_all(root.join(".uspec/changes"))?;
+    Checks::default().save(root)?;
 
     let project = Project::open(root)?;
     let types = types::load(&project);
@@ -166,4 +168,24 @@ fn create_root(root: &Path, spec_dir: &Path, out: &Out) -> Result<()> {
         println!("  {f}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writes_empty_checks() {
+        let root = std::env::temp_dir().join(format!("uspec-test-init-checks-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let types_dir = root.join(".uspec/node-types/basic");
+        fs::create_dir_all(&types_dir).unwrap();
+        fs::write(types_dir.join("node-type.yaml"), BASIC_TYPE).unwrap();
+        fs::write(types_dir.join("overview.md"), BASIC_TEMPLATE).unwrap();
+        create_root(&root, &root.join("docs"), &Out { json: true }).unwrap();
+        assert!(root.join(".uspec/checks.yaml").is_file());
+        let project = Project::open(&root).unwrap();
+        assert_eq!(Checks::load(&project).unwrap(), Checks::default());
+        let _ = fs::remove_dir_all(&root);
+    }
 }

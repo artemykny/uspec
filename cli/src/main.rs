@@ -106,8 +106,17 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ChangeCmd,
     },
-    /// Find code changed without a spec change.
-    Drift,
+    /// Find what changed since it was last checked.
+    Drift {
+        #[command(subcommand)]
+        cmd: Option<DriftCmd>,
+    },
+}
+
+#[derive(Subcommand)]
+enum DriftCmd {
+    /// Record documents or nodes as checked, as they are now.
+    Accept { items: Vec<String> },
 }
 
 #[derive(Subcommand)]
@@ -147,7 +156,7 @@ enum ChangeCmd {
         #[arg(long)]
         reason: Option<String>,
     },
-    /// Validate and remove the change directory.
+    /// Validate, record the change's checks and remove the change directory.
     Close { name: String },
 }
 
@@ -203,7 +212,10 @@ fn run(cmd: Cmd, out: &Out) -> Result<()> {
             }
             ChangeCmd::Close { name } => change::cmd_close(&project, &types, &tree, &name, out),
         },
-        Cmd::Drift => drift::cmd_drift(&project, &types, &tree, out),
+        Cmd::Drift { cmd } => match cmd {
+            None => drift::cmd_drift(&project, &types, &tree, out),
+            Some(DriftCmd::Accept { items }) => drift::cmd_accept(&project, &types, &tree, &items, out),
+        },
     }
 }
 

@@ -51,11 +51,14 @@ export class Decorations implements vscode.FileDecorationProvider, vscode.Dispos
           );
         }
       }
-      for (const [node, reason] of p.drift) {
-        const deco = new vscode.FileDecoration('D', `Drift: ${reason}`, new vscode.ThemeColor('list.warningForeground'));
+      // After the dimming, so a drifting unwritten document shows D. Items of an open change never drift.
+      const drift = (reasons: string[]) => new vscode.FileDecoration('D', `Drift: ${reasons.join('; ')}`, new vscode.ThemeColor('list.warningForeground'));
+      for (const [node, reasons] of p.nodeDrift) {
+        const deco = drift(reasons);
         map.set(p.abs(p.nodeDir(node)), deco);
         for (const c of codePaths(p, node)) map.set(p.abs(c.path), deco);
       }
+      for (const [key, reasons] of p.docDrift) map.set(p.abs(p.docFile(key)), drift(reasons));
     }
     this.map = map;
     this.emitter.fire(undefined);

@@ -20,7 +20,7 @@ Manages the [change directory](../../method/changes/) `.uspec/changes/<name>/`: 
 | `status` | Prints every item in `status.yaml` with its state, and its reason, or for a pending document the rules that reached it; then the plans with their state. |
 | `next` | Prints the items that are ready, grouped by what to do with them. |
 | `set` | Records an item's state and, for `updated`, propagates. |
-| `close` | Runs `validate` and removes the change directory. |
+| `close` | Runs `validate`, records what the change checked, and removes the change directory. |
 
 The change template:
 
@@ -68,7 +68,7 @@ A document is ready when no other unsettled document can reach it through propag
 
 | State | For | Set by | Allowed from |
 |---|---|---|---|
-| `updated` | document | a writer, or the user | any state, or not yet in the change |
+| `updated` | document | a writer, or the user, also to take in an edit made outside a change | any state, or not yet in the change |
 | `affected` | document | triage, or impact for a starting document; needs `--reason` | `pending`, `affected`, or not yet in the change |
 | `no-change` | document | triage, or the writer when it finds nothing to change; needs `--reason` | `pending`, `affected` |
 | `done` | node | the implementer of its plan, once the code is updated and verified | a node under `implementation` |
@@ -79,7 +79,7 @@ Setting a document to `updated` applies the [propagation rules](../../method/cha
 
 ### close
 
-Fails while any document is `pending` or `affected` or any node isn't `done`. Then runs `validate`; if it finds errors, prints them to stderr and fails. Otherwise removes the change directory, plans included.
+Fails while any document is `pending` or `affected` or any node isn't `done`. Then runs `validate`; if it finds errors, prints them to stderr and fails. Otherwise it records the change's checks in `.uspec/checks.yaml` (see [drift](../../method/drift/)), creating the file if it is missing: every document of the change, all settled by then, as checked against the current content of its upstream units, and every node under `implementation`, all `done` by then, as verified against its current spec and code. Records of items the change didn't reach are kept as they are. Then it removes the change directory, plans included.
 
 ## Output
 
@@ -172,7 +172,14 @@ propagated from docs/product/support/refunds/rules.md:
 
 With nothing reached it prints `propagated from <path>: nothing`.
 
-`close` prints `validate: ok` and `removed .uspec/changes/<name>/`.
+`close` prints `validate: ok`, the checks it recorded, and `removed .uspec/changes/<name>/`:
+
+```
+$ uspec change close refund-window
+validate: ok
+recorded .uspec/checks.yaml: 5 documents checked, 2 nodes verified
+removed .uspec/changes/refund-window/
+```
 
 With `--json`:
 
@@ -183,7 +190,7 @@ With `--json`:
 | `status` | `change`, `baseline`, `documents` (`document`, `path`, `state`, `reason`, `via`), `implementation` (`node`, `state`), `plans` (`plan`, `path`, `nodes`, `after`, `state`: `pending` or `done`) |
 | `next` | `change`, `baseline`, `impact` (`null` when not due, else `read`: `path`), `triage` (`null` when empty, else `read`: `path`, plus `document` and `diff_since` for diffs; `batch`: `document`, `path`, `via`), `write` (`node`, `documents`: `document`, `path`), `plan` (`null` when nothing is left to plan, else `dir` and `nodes`), `plan_errors` (`plan`, `null` for an error about several plans, and `message`), `implement` (`plan`, `path`, `nodes`) |
 | `set` | `change`, `document` or `node`, `state`; for `updated` also `propagated` (`document`, `path`, `via`, `already_in_change`) and `implementation` (the node added, or `null`) |
-| `close` | `change`, `closed: true` |
+| `close` | `change`, `closed: true`, `checked` (`document`, `path`), `verified` (`node`) |
 
 ```json
 {

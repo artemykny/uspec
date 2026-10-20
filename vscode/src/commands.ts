@@ -7,7 +7,7 @@ import type { AgentManager, AgentRun } from './agents';
 import { writerDocs } from './core/agents';
 import { runJson, UspecError } from './core/cli';
 import { sectionLine, sectionText } from './core/links';
-import { CONTEXT_GROUPS, type ContextJson, type NextJson, type SetJson } from './core/model';
+import { CONTEXT_GROUPS, type AcceptJson, type ContextJson, type NextJson, type SetJson } from './core/model';
 import { baseName, docKey, join, nodeKey, showNode, splitDoc } from './core/paths';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
@@ -197,16 +197,53 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
 
   reg('uspec.checkDrift', async () => {
     await Promise.all(manager.projects.map((p) => manager.load(p)));
-    const drifting = manager.projects.flatMap((p) => [...p.drift.entries()].map(([n, r]) => ({ p, n, r })));
+    // Nodes first, then documents; one entry per reason.
+    const drifting = manager.projects.flatMap((p) => [
+      ...[...p.nodeDrift].flatMap(([n, rs]) => rs.map((r) => ({ p, item: showNode(n), rel: p.nodeYaml(n), r }))),
+      ...[...p.docDrift].flatMap(([k, rs]) => rs.map((r) => ({ p, item: k, rel: p.docFile(k), r }))),
+    ]);
     if (!drifting.length) {
-      void vscode.window.showInformationMessage('No drift: every node’s code matches a committed spec change.');
+      void vscode.window.showInformationMessage('No drift: everything matches what it was last checked against.');
       return;
     }
     const pick = await vscode.window.showQuickPick(
-      drifting.map((d) => ({ label: `$(warning) ${showNode(d.n)}`, description: d.r, d })),
-      { placeHolder: `${drifting.length} node${drifting.length === 1 ? '' : 's'} drift` },
+      drifting.map((d) => ({ label: `$(warning) ${d.item}`, description: d.r, detail: manager.projects.length > 1 ? d.p.name : undefined, d })),
+      { placeHolder: `${drifting.length} drift reason${drifting.length === 1 ? '' : 's'}`, matchOnDescription: true },
     );
-    if (pick) await open(pick.d.p.uriOf(pick.d.p.nodeYaml(pick.d.n)));
+    if (pick) await open(pick.d.p.uriOf(pick.d.rel));
+  });
+
+  // Records a drifting node or document as checked, as it is now, after saying what that means.
+  reg('uspec.drift.accept', async (arg?: any) => {
+    let ref: { p: Project; node: string; doc?: string } | undefined;
+    if (arg?.p && typeof arg.node === 'string') ref = { p: arg.p, node: arg.node, doc: typeof arg.doc === 'string' ? arg.doc : undefined };
+    else {
+      const t = activeTarget();
+      if (t) ref = { p: t.p, node: t.node, doc: t.spec?.kind === 'doc' ? t.doc : undefined };
+    }
+    if (!ref) {
+      void vscode.window.showInformationMessage('Open a spec document, a node.yaml or a code file first.');
+      return;
+    }
+    const { p, node, doc } = ref;
+    const key = doc ? docKey(node, doc) : undefined;
+    const item = key ?? showNode(node);
+    if (!(key ? p.docDrift.has(key) : p.nodeDrift.has(node))) {
+      void vscode.window.showInformationMessage(`${item} doesn’t drift.`);
+      return;
+    }
+    const meaning = key
+      ? `${key} is recorded as checked against what it depends on, as they are now.`
+      : `The code of ${item} is recorded as verified against its spec, as both are now.`;
+    const ok = await vscode.window.showWarningMessage(
+      `Accept the drift of ${item}? ${meaning} This needs no change, and nothing is triaged or implemented.`,
+      { modal: true },
+      'Accept',
+    );
+    if (ok !== 'Accept') return;
+    const out = await manager.mutate<AcceptJson>(p, ['drift', 'accept', item]);
+    const lines = [...out.verified.map((v) => `verified: ${v.node}`), ...out.checked.map((c) => `checked: ${c.document}`)];
+    void vscode.window.showInformationMessage(lines.join(', ') || `Nothing recorded for ${item}.`);
   });
 
   reg('uspec.goToNode', async () => {

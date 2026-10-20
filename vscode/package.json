@@ -75,6 +75,11 @@
         "category": "uspec"
       },
       {
+        "command": "uspec.drift.accept",
+        "title": "Accept Drift…",
+        "category": "uspec"
+      },
+      {
         "command": "uspec.goToNode",
         "title": "Go to Node",
         "category": "uspec",
@@ -435,6 +440,11 @@
           "command": "uspec.node.remove",
           "when": "view == uspec.specTree && viewItem =~ /^uspec\\.node/ && viewItem =~ /;child/",
           "group": "2_edit@2"
+        },
+        {
+          "command": "uspec.drift.accept",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.(node|doc).*;drift/",
+          "group": "2_status@1"
         },
         {
           "command": "uspec.node.openYaml",
@@ -922,7 +932,7 @@
         "uspec.drift.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Run `uspec drift` with every refresh and mark drifting nodes."
+          "description": "Run `uspec drift` with every refresh and mark drifting nodes and documents."
         },
         "uspec.specTree.followActiveEditor": {
           "type": "boolean",

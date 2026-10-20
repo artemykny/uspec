@@ -23,7 +23,8 @@ import {
 } from '../../core/agents';
 import { findToken, locateInFile, locateIssue } from '../../core/issues';
 import { anchor, formatLink, headings, parseLink, sectionLine, sectionText } from '../../core/links';
-import type { NextJson } from '../../core/model';
+import { parseDrift } from '../../core/drift';
+import type { DriftJson, NextJson } from '../../core/model';
 import { classifySpecPath, codeOwner, nodeKey, projectToSpec, specRootFromConfig, specToProject, splitDoc, toDocKey } from '../../core/paths';
 import { isTemplateLeft, isUnwritten, leftoverGuidance, splitFrontmatter } from '../../core/templates';
 import { listItems, yamlPosition } from '../../core/yaml';
@@ -219,6 +220,29 @@ describe('links', () => {
   it('keeps a section in a YAML list item, and drops a comment', () => {
     const lines = ['derives_from:', '  - product/support/refunds/rules.md#refund-window', '  - system/services/customer-bff   # API-first', 'code:'];
     assert.deepStrictEqual(listItems(lines, 'derives_from'), ['product/support/refunds/rules.md#refund-window', 'system/services/customer-bff']);
+  });
+});
+
+describe('drift', () => {
+  it('groups the reasons of nodes and documents in the CLI’s order', () => {
+    const json: DriftJson = {
+      drift: [
+        { kind: 'code', node: 'cli/drift', document: null, path: null, unit: null, reason: 'code changed since it was last verified' },
+        { kind: 'spec', node: 'cli/drift', document: null, path: null, unit: null, reason: 'spec changed since its code was last verified' },
+        { kind: 'dependency', node: 'vscode', document: 'vscode/overview.md', path: 'docs/vscode/overview.md', unit: 'cli/drift/usage.md', reason: 'cli/drift/usage.md changed since it was last checked' },
+        { kind: 'dependency', node: 'cli/init', document: 'cli/init/usage.md', path: 'docs/cli/init/usage.md', unit: null, reason: 'never checked' },
+        { kind: 'code', node: '.', document: null, path: null, unit: null, reason: 'never checked' },
+      ],
+    };
+    const { nodes, docs } = parseDrift(json);
+    assert.deepStrictEqual(nodes.get('cli/drift'), ['code changed since it was last verified', 'spec changed since its code was last verified']);
+    assert.deepStrictEqual(docs.get('vscode/overview.md'), ['cli/drift/usage.md changed since it was last checked']);
+    assert.deepStrictEqual(docs.get('cli/init/usage.md'), ['never checked']);
+    assert.deepStrictEqual(nodes.get(''), ['never checked']);
+    assert.deepStrictEqual([...nodes.keys()], ['cli/drift', '']);
+    assert.deepStrictEqual([...docs.keys()], ['vscode/overview.md', 'cli/init/usage.md']);
+    const none = parseDrift({ drift: [] });
+    assert.strictEqual(none.nodes.size + none.docs.size, 0);
   });
 });
 

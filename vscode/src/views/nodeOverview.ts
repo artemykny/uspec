@@ -20,6 +20,12 @@ const STATE_MEANING: Record<string, string> = {
   'no-change': 'Reviewed; no change needed',
 };
 const MODE_LABEL: Record<Mode, string> = { document: 'Write', implement: 'Implement' };
+const DRIFT_MEANING: Record<'dependency' | 'code' | 'spec', string> = {
+  code: 'The code changed since it was last verified against its spec',
+  spec: 'The spec changed since its code was last verified',
+  dependency: 'What the document depends on changed since it was last checked',
+};
+const driftMeaning = (kind: 'dependency' | 'code' | 'spec', reason: string) => reason === 'never checked' ? 'Never checked: nothing records what it was last checked against' : DRIFT_MEANING[kind];
 
 /** Only server-created actions are accepted; messages cannot supply commands or paths. */
 export function renderOverview(target: NodeTarget, mode: Mode | undefined, context: OverviewContext | undefined, nonce: string, generation: number): { html: string; actions: OverviewAction[] } {
@@ -92,9 +98,18 @@ export function renderOverview(target: NodeTarget, mode: Mode | undefined, conte
     changeBody = `<p>${action(change.name, 'uspec.openSection', [p.root, `.uspec/changes/${change.name}/change.md`], false, `.uspec/changes/${change.name}/change.md`)}</p>${rows.length ? list(rows) : '<p class="secondary">Not in this change</p>'}`;
   }
 
-  // Drift
-  const drift = p.drift.get(node);
-  const driftBody = drift ? `<p class="warning">${label('⚠ drift', 'The code changed since the last committed change of its spec')} ${esc(drift)}</p>` : '<p class="secondary">None</p>';
+  // Drift: the node, then its documents in its type's order, each with every reason and Accept drift
+  const driftItems = [
+    ...(p.nodeDrift.get(node) ? [{ doc: undefined as string | undefined, reasons: p.nodeDrift.get(node)! }] : []),
+    ...n.documents.flatMap(d => p.docDrift.get(docKey(node, d)) ? [{ doc: d as string | undefined, reasons: p.docDrift.get(docKey(node, d))! }] : []),
+  ];
+  const driftRows = driftItems.map(({ doc: d, reasons }) => {
+    const accept = d
+      ? action('Accept drift', 'uspec.drift.accept', [{ p, node, doc: d }], true, `Record ${d}.md as checked against what it depends on, as they are now, without a change`)
+      : action('Accept drift', 'uspec.drift.accept', [{ p, node }], true, `Record the code of ${name(node)} as verified against its spec, as both are now, without a change`);
+    return row(`<span>${esc(d ? `${d}.md` : name(node))}</span>`, accept) + reasons.map(r => `<p class="warning">${label('⚠ drift', driftMeaning(d ? 'dependency' : r.startsWith('spec ') ? 'spec' : 'code', r))} ${esc(r)}</p>`).join('');
+  });
+  const driftBody = list(driftRows);
 
   // Context
   const modes = contextModes(target);

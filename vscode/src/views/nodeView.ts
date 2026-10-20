@@ -94,7 +94,7 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
       const out: NodeEl[] = [{ kind: 'title' }];
       if (t.doc) out.push({ kind: 'template' });
       if (t.p.activeChange && (t.doc ? t.p.docState(docKey(t.node, t.doc)) : t.p.activeChange.impl.has(t.node))) out.push({ kind: 'state' });
-      if (t.p.drift.has(t.node)) out.push({ kind: 'drift' });
+      if (t.p.drifts(t.node).length) out.push({ kind: 'drift' });
       out.push({ kind: 'section', section: 'upstream' }, { kind: 'section', section: 'downstream' });
       if (n.code.length) out.push({ kind: 'section', section: 'code' });
       if (t.doc) out.push({ kind: 'context', mode: 'document' });
@@ -168,8 +168,8 @@ export class NodeViewProvider implements vscode.TreeDataProvider<NodeEl>, vscode
       }
       case 'drift': {
         const item = new vscode.TreeItem('Drift');
-        item.description = p.drift.get(t.node);
-        item.tooltip = item.description;
+        item.description = p.drifts(t.node).map((d) => (d.doc ? `${d.doc}.md: ` : '') + d.reasons.join('; ')).join(' · ');
+        item.tooltip = p.drifts(t.node).flatMap((d) => d.reasons.map((r) => `${d.doc ? `${d.doc}.md` : showNode(t.node)}: ${r}`)).join('\n');
         item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
         return item;
       }

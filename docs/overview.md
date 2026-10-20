@@ -26,11 +26,10 @@ The first release contains:
 Out of scope for the first release:
 
 - Onboarding an existing codebase (building the first tree from code). Its design isn't finished.
-- Recording triage results after a change closes, to detect edits that were never propagated.
 
 ## Success criteria
 
 - An agent can implement any node with code paths from its context alone, without clarifying questions.
 - A change reaches every affected node and the code.
 - Adding a domain or node type needs no change to uspec, only to the project's spec.
-- Drift between spec and code is detected, not discovered by accident.
+- Drift is detected, not discovered by accident: code changed without its spec, a spec whose code was never verified against it, and documents whose dependencies changed without them being checked.

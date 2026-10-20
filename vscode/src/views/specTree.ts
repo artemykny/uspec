@@ -195,7 +195,8 @@ function nodeItem(p: Project, node: string): vscode.TreeItem {
   item.iconPath = issues.length
     ? new vscode.ThemeIcon('error', new vscode.ThemeColor('list.errorForeground'))
     : new vscode.ThemeIcon('symbol-namespace');
-  item.contextValue = `uspec.node${code ? ';code' : ''}${node === '' ? ';root' : ';child'}`;
+  const drift = p.nodeDrift.get(node);
+  item.contextValue = `uspec.node${code ? ';code' : ''}${node === '' ? ';root' : ';child'}${drift ? ';drift' : ''}`;
 
   const md = new vscode.MarkdownString(undefined, true);
   md.appendMarkdown(`**${showNode(node)}** · ${t ? `${t.name} (\`${t.type}\`)` : `type \`${n.type ?? '?'}\``}\n\n`);
@@ -205,8 +206,7 @@ function nodeItem(p: Project, node: string): vscode.TreeItem {
   const down = p.downstream.get(node) ?? [];
   if (down.length) md.appendMarkdown(`Linked from: ${down.map((l) => `\`${showNode(l)}\``).join(', ')}\n\n`);
   if (n.code.length) md.appendMarkdown(`Code: ${n.code.map((c) => `\`${c}\``).join(', ')}\n\n`);
-  const drift = p.drift.get(node);
-  if (drift) md.appendMarkdown(`$(warning) Drift: ${drift}\n\n`);
+  for (const r of drift ?? []) md.appendMarkdown(`$(warning) Drift: ${escapeMd(r)}\n\n`);
   for (const i of issues) md.appendMarkdown(`$(error) ${escapeMd(i.message)}\n\n`);
   item.tooltip = md;
   return item;
@@ -235,7 +235,7 @@ function docItem(p: Project, node: string, doc: string, missing?: boolean): vsco
   if (td && !td.exposed) flags.push('internal');
   if (p.unwritten.has(key)) flags.push('unwritten');
   item.description = flags.join(' · ');
-  const md = new vscode.MarkdownString();
+  const md = new vscode.MarkdownString(undefined, true);
   md.appendMarkdown(`**${key}**\n\n`);
   md.appendText(`${p.docFile(key)}\n\n`);
   if (td?.description) md.appendMarkdown(`${td.description.trim()}\n\n`);
@@ -245,8 +245,10 @@ function docItem(p: Project, node: string, doc: string, missing?: boolean): vsco
     md.appendMarkdown(`**${change}**: ${STATE_LABEL[state.state]}${state.reason ? ` — ${escapeMd(state.reason)}` : ''}\n\n`);
     if (state.via.length && !state.reason) md.appendMarkdown(`Reached by: ${state.via.map(escapeMd).join('; ')}\n\n`);
   }
+  const drift = p.docDrift.get(key);
+  for (const r of drift ?? []) md.appendMarkdown(`$(warning) Drift: ${escapeMd(r)}\n\n`);
   item.tooltip = md;
-  item.contextValue = `uspec.doc${state ? `;inChange;${state.state}` : ''}${p.activeChange ? ';active' : ''}`;
+  item.contextValue = `uspec.doc${state ? `;inChange;${state.state}` : ''}${p.activeChange ? ';active' : ''}${drift ? ';drift' : ''}`;
   return item;
 }
 

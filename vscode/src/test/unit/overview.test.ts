@@ -12,7 +12,7 @@ function target(): NodeTarget {
     typeOf: () => ({ name: 'Service', type: 'service', code: true, path: '.uspec/node-types/service/node-type.yaml', description: '<script>unsafe</script>' }),
     typeDoc: () => ({ description: 'Business rules', required: true, exposed: false, extra: false, derives_from: ['api#errors'], template: '.uspec/node-types/service/logic.md' }),
     nodeDir: (n: string) => `docs/${n}`, docFile: (key: string) => `docs/${key}`, hasCode: () => true,
-    downstream: new Map([['payments', ['ops']]]), drift: new Map(), nodeIssues: () => [], activeChange: undefined,
+    downstream: new Map([['payments', ['ops']]]), nodeDrift: new Map<string, string[]>(), docDrift: new Map<string, string[]>(), nodeIssues: () => [], activeChange: undefined,
   };
   return { p, node: 'payments', doc: 'logic' } as unknown as NodeTarget;
 }
@@ -86,11 +86,26 @@ describe('node overview presentation', () => {
     assert.match(sectionOf(renderOverview(t, 'document', undefined, 'nonce', 1).html, 'Active change'), /via links to refunds\/rules.md/);
   });
 
-  it('escapes the drift reason and says None without drift', () => {
+  it('lists every drift reason of the node and its documents, each item with Accept drift', () => {
     const t = target();
     assert.match(sectionOf(renderOverview(t, 'document', undefined, 'nonce', 1).html, 'Drift'), /None/);
-    t.p.drift.set(t.node, 'code changed <after> spec');
-    assert.match(sectionOf(renderOverview(t, 'document', undefined, 'nonce', 1).html, 'Drift'), /⚠ drift<\/span> code changed &lt;after&gt; spec/);
+    t.p.nodeDrift.set(t.node, ['code changed <since> verified', 'spec changed since its code was last verified']);
+    t.p.docDrift.set('payments/logic.md', ['refunds/rules.md <changed> since it was last checked']);
+    const { html, actions } = renderOverview(t, 'document', undefined, 'nonce', 1);
+    const drift = sectionOf(html, 'Drift');
+    assert.ok(!drift.includes('None'));
+    let last = drift.indexOf('<span>payments</span>');
+    assert.ok(last >= 0);
+    for (const text of ['⚠ drift</span> code changed &lt;since&gt; verified', '⚠ drift</span> spec changed since its code was last verified', '<span>logic.md</span>', '⚠ drift</span> refunds/rules.md &lt;changed&gt; since it was last checked']) {
+      const at = drift.indexOf(text);
+      assert.ok(at > last, text); last = at;
+    }
+    assert.strictEqual(drift.slice(0, drift.indexOf('<span>logic.md</span>')).split('⚠ drift').length - 1, 2);
+    assert.match(drift, /title="The spec changed since its code was last verified">⚠ drift/);
+    assert.match(drift, /title="What the document depends on changed since it was last checked">⚠ drift/);
+    const accepts = actions.filter(a => a.command === 'uspec.drift.accept').map(a => { const { node, doc } = a.args[0] as any; return { node, doc }; });
+    assert.deepStrictEqual(accepts, [{ node: 'payments', doc: undefined }, { node: 'payments', doc: 'logic' }]);
+    assert.ok(actions.filter(a => a.command === 'uspec.drift.accept').every(a => (a.args[0] as any).p === t.p));
   });
 
   it('switches context modes and binds copy actions to the selected one', () => {

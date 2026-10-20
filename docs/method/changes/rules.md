@@ -55,7 +55,7 @@ A change kept from an [experiment](../experiments/) says so in `change.md`.
 
 | State | Meaning |
 |---|---|
-| `updated` | The document was edited in this change, by a writer or by the user. |
+| `updated` | The document was edited in this change, by a writer or by the user, or the user took in an edit made outside a change, so that it propagates. |
 | `pending` | A candidate: an update reached it and it isn't triaged yet. Only propagation sets it. |
 | `affected` | Impact or triage found it must change, and why. A writer then makes it `updated`. |
 | `no-change` | Triage, or a writer, found it needs no change, and why. |
@@ -89,7 +89,7 @@ The plans are valid when every node under `implementation` that isn't `done` is 
 
 **Implement.** Implementation follows the spec changes of a change, never replaces them. Each plan gets one implementer. A plan is ready when the plans in its `after` are done and every node its nodes link to that is under `implementation` is `done` or in the plan itself. The implementer changes only the code of its plan's nodes; once the code is verified against their documents, each of them is `done`. A plan is done when all its nodes are.
 
-**Close.** A change closes when no item is `pending` or `affected`, every node is `done`, and the tree is valid. Its directory is then removed, plans included; git history keeps every decision and its reason.
+**Close.** A change closes when no item is `pending` or `affected`, every node is `done`, and the tree is valid. Closing records what the change checked (see [drift](../drift/)): every settled document as checked against the current content of what it depends on, and every node under `implementation` as verified against its current spec and code. Items the change didn't reach keep their records. The change's directory is then removed, plans included; git history keeps every decision and its reason.
 
 **One at a time.** Several changes can be open at once, but they are processed one by one, oldest first: each is worked through to close before the next starts, so each starts from the tree as the previous one left it.
 

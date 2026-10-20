@@ -24,26 +24,26 @@ pub fn short(sha: &str) -> &str {
     &sha[..sha.len().min(7)]
 }
 
-/// The last commit that touched any of `paths`: its hash and commit time.
-pub fn last_commit(root: &Path, paths: &[String]) -> Option<(String, i64)> {
+/// The files under `paths` that git tracks or that are untracked but not ignored, relative to `root`,
+/// sorted. Empty when `paths` is empty or git fails.
+pub fn files(root: &Path, paths: &[String]) -> Vec<String> {
     if paths.is_empty() {
-        return None;
+        return vec![];
     }
-    let mut args = vec!["log", "-1", "--format=%H %ct", "--"];
-    args.extend(paths.iter().map(String::as_str));
-    let out = git(root, &args).ok()?;
-    let (sha, time) = out.split_once(' ')?;
-    Some((sha.to_string(), time.parse().ok()?))
-}
-
-/// Whether any of `paths` has uncommitted changes.
-pub fn dirty(root: &Path, paths: &[String]) -> bool {
-    if paths.is_empty() {
-        return false;
+    let out = Command::new("git")
+        .current_dir(root)
+        .args(["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--"])
+        .args(paths)
+        .output();
+    let Ok(out) = out else { return vec![] };
+    if !out.status.success() {
+        return vec![];
     }
-    let mut args = vec!["status", "--porcelain", "--"];
-    args.extend(paths.iter().map(String::as_str));
-    git(root, &args).is_ok_and(|o| !o.is_empty())
+    let mut files: Vec<String> =
+        String::from_utf8_lossy(&out.stdout).split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect();
+    files.sort();
+    files.dedup();
+    files
 }
 
 /// A file's content at `commit`, by its path relative to `root`; `None` if it didn't exist.

@@ -61,12 +61,19 @@ export class Diagnostics implements vscode.Disposable {
       validateUris.push(uri);
     }
 
-    const driftUris: vscode.Uri[] = [];
-    for (const [node, reason] of p.drift) {
-      const uri = p.uriOf(p.nodeYaml(node));
+    // One warning per reason: code and spec drift on the node's node.yaml, dependency drift on the document.
+    const drifts = new Map<string, vscode.Diagnostic[]>();
+    const addDrift = (rel: string, reason: string) => {
       const d = new vscode.Diagnostic(new vscode.Range(0, 0, 0, 0), `drift: ${reason}`, vscode.DiagnosticSeverity.Warning);
       d.source = 'uspec drift';
-      this.drift.set(uri, [d]);
+      drifts.set(rel, [...(drifts.get(rel) ?? []), d]);
+    };
+    for (const [node, reasons] of p.nodeDrift) for (const r of reasons) addDrift(p.nodeYaml(node), r);
+    for (const [key, reasons] of p.docDrift) for (const r of reasons) addDrift(p.docFile(key), r);
+    const driftUris: vscode.Uri[] = [];
+    for (const [rel, ds] of drifts) {
+      const uri = p.uriOf(rel);
+      this.drift.set(uri, ds);
       driftUris.push(uri);
     }
     this.byProject.set(p.root, { validate: validateUris, drift: driftUris });

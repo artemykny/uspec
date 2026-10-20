@@ -26,4 +26,4 @@ The life of a product:
 4. **Keep spec and code in sync.** Three checks find what goes wrong, so it is detected, not discovered by accident:
    - **Structure:** the tree is valid against its [node types](node-types/) and [links](links/).
    - **Review:** every node with code paths is implementable from its [context](context/) alone, and no node contradicts its ancestors or upstream nodes.
-   - **[Drift](drift/):** code that changed without a spec change. The code is a bug, or the spec is changed explicitly first.
+   - **[Drift](drift/):** what changed since it was last checked: a document whose dependencies changed, a node whose spec changed since its code was last verified, and code that changed since then. What drifts is brought in line through a change, or accepted when it still holds; code that disagrees with its spec is a bug, or the spec is changed explicitly first.
