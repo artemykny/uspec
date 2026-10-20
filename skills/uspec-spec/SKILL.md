@@ -18,7 +18,7 @@ You don't run the change. The uspec VS Code extension orchestrates it: it finds 
 - **The CLI decides.** Take what is open and ready from `uspec change list` and `uspec change next`, and what to read for a document from `uspec context`. Don't pick files or order yourself.
 - **Name the change on every call.** Say which change you work on ("Using change: refund-window"). If more than one change is open and the user hasn't said which, run `uspec change list` and ask.
 - **Re-read from disk.** Files may have been edited since you last saw them. Read them again before you use them.
-- **A job from the extension comes first.** The extension's session configuration (`uspec.agents.sessions`) can name this session for jobs of the change, so this session may later receive an impact, triage, writer, planner or implementer prompt with its input. For that turn, the job's prompt, permissions and result format take precedence over the rules above: an implementer job edits code, though this skill never does, and the turn ends with the job's result, with no hand-over text or follow-up questions. After the job, the session is the user's again, under this skill's rules.
+- **A job from the extension comes first.** The session mode the extension uses for the change can name this session for jobs of the change, so this session may later receive an impact, triage, writer, planner or implementer prompt with its input. For that turn, the job's prompt, permissions and result format take precedence over the rules above: an implementer job edits code, though this skill never does, and the turn ends with the job's result, with no hand-over text or follow-up questions. After the job, the session is the user's again, under this skill's rules.
 
 ## Pick the mode
 

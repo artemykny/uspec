@@ -37,7 +37,7 @@ import { fileProposal, readFileProposal, readSplit, type FileDecision, type Spli
 import type { NextJson, SetJson } from './core/model';
 import { isTemplateLeft } from './core/templates';
 import { join, nodeKey, showNode, splitDoc } from './core/paths';
-import { autoSplit, EXPLORE, parseSessions, resolveSession, sharedSession, splitterOff, type SessionConfig, type SessionItem } from './core/sessions';
+import { autoSplit, DEFAULT_MODE, describeMode, EXPLORE, parseSessions, resolveSession, sharedSession, splitterOff, type SessionConfig, type SessionItem } from './core/sessions';
 import type { ContentProvider } from './content';
 import { codePaths, readText, type Project, type ProjectManager } from './projects';
 import { SessionStore } from './sessionStore';
@@ -194,7 +194,7 @@ export class AgentManager implements vscode.Disposable {
     });
     this.checkSessions();
     this.configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('uspec.agents.sessions')) this.checkSessions();
+      if (e.affectsConfiguration('uspec.agents.sessions') || e.affectsConfiguration('uspec.agents.sessionMode')) this.checkSessions();
     });
   }
 
@@ -210,14 +210,71 @@ export class AgentManager implements vscode.Disposable {
     return vscode.workspace.getConfiguration('uspec');
   }
 
-  /** Which jobs share a session, from `uspec.agents.sessions`; `isolated` while it has a problem. */
-  private sessionConfig(): SessionConfig {
-    return parseSessions(this.config().get('agents.sessions')).config;
+  /** The session modes: the presets and those of `uspec.agents.sessions`; a mode with a problem is `isolated`. */
+  modes(): Record<string, SessionConfig> {
+    return parseSessions(this.config().get('agents.sessions')).modes;
   }
 
-  /** Warns about each problem of `uspec.agents.sessions`. */
+  /** The mode of a change that chose none: `uspec.agents.sessionMode`, while it names a mode. */
+  defaultMode(): string {
+    const mode = this.config().get<string>('agents.sessionMode', DEFAULT_MODE);
+    return mode in this.modes() ? mode : DEFAULT_MODE;
+  }
+
+  /** The session mode of a change: the one chosen for it while it is still a mode, else the default. */
+  mode(p: Project, change: string): string {
+    const mode = this.sessions.mode(p, change);
+    return mode !== undefined && mode in this.modes() ? mode : this.defaultMode();
+  }
+
+  setMode(p: Project, change: string, mode: string): void {
+    this.sessions.setMode(p, change, mode);
+    this.emitter.fire(undefined);
+  }
+
+  /** Asks how the change's agents go on: the session mode of its next jobs. Undefined when the user cancels. */
+  async chooseMode(p: Project, change: string): Promise<string | undefined> {
+    const current = this.mode(p, change);
+    const modes = this.modes();
+    const names = [current, ...Object.keys(modes).filter((m) => m !== current)];
+    const pick = await vscode.window.showQuickPick(
+      names.map((name) => ({ label: name, description: name === current ? 'current' : name === this.defaultMode() ? 'default' : undefined, detail: describeMode(modes[name]), name })),
+      { placeHolder: `${change}: which jobs share an agent session?`, ignoreFocusOut: true },
+    );
+    if (!pick) return undefined;
+    this.setMode(p, change, pick.name);
+    return pick.name;
+  }
+
+  /** Which jobs of a change share a session, from its mode. */
+  private sessionConfig(p: Project, change: string): SessionConfig {
+    return this.modes()[this.mode(p, change)] ?? {};
+  }
+
+  /** Warns about each problem of `uspec.agents.sessions` and `uspec.agents.sessionMode`. */
   private checkSessions(): void {
     for (const problem of parseSessions(this.config().get('agents.sessions')).problems) void vscode.window.showWarningMessage(problem);
+    const mode = this.config().get<string>('agents.sessionMode', DEFAULT_MODE);
+    if (!(mode in this.modes())) void vscode.window.showWarningMessage(`uspec.agents.sessionMode: \`${mode}\` isn't a session mode. Changes use ${DEFAULT_MODE} until this is fixed.`);
+  }
+
+  /** Whether the change's next jobs would continue a session: a new context can start them afresh. */
+  canStartNewContext(p: Project, change: string): boolean {
+    return Object.keys(this.sessionConfig(p, change)).length > 0 && this.sessions.hasSessions(p, change) && !this.isRunning(p, change);
+  }
+
+  /**
+   * Starts the change's next jobs in new sessions: its named sessions are forgotten, and each name's next
+   * job starts a new one, which the jobs after it continue (docs/vscode/overview.md#agents, Sessions).
+   */
+  newContext(p: Project, change: string): void {
+    if (this.isRunning(p, change)) {
+      void vscode.window.showWarningMessage(`${change}: agents are running. Stop them before starting a new context.`);
+      return;
+    }
+    this.sessions.forget(p, change);
+    this.emitter.fire(undefined);
+    void vscode.window.showInformationMessage(`${change}: the next jobs start in new agent sessions.`);
   }
 
   // --- Explore sessions --------------------------------------------------------------------------
@@ -322,7 +379,7 @@ export class AgentManager implements vscode.Disposable {
    * jobs of a session run in the order they are queued.
    */
   private queue(run: AgentRun, item: SessionItem, task: () => Promise<AgentRun>): Promise<AgentRun> {
-    if (!run.want && run.change && run.role !== 'reviewer') run.want = resolveSession(this.sessionConfig(), run.role, item);
+    if (!run.want && run.change && run.role !== 'reviewer') run.want = resolveSession(this.sessionConfig(run.p, run.change), run.role, item);
     const key = run.want?.name ?? (run.want?.resume ? `id:${run.want.resume}` : undefined);
     const slot = () => this.slotsFor(run.p, run.change).run(task);
     return key ? this.lockFor(run.p, run.change, key).run(slot) : slot();
@@ -415,7 +472,7 @@ export class AgentManager implements vscode.Disposable {
       return undefined;
     }
     const reread = jobsBefore > 0;
-    const shared = want.name ? sharedSession(this.sessionConfig(), run.role) : false;
+    const shared = want.name && run.change ? sharedSession(this.sessionConfig(run.p, run.change), run.role) : false;
     const prompt = agentPrompt(fs.readFileSync(promptPath, 'utf8'), input, mode) + (run.provider === 'codex' ? codexScope(perms, { reread }) : '');
     const model = modelFor(run.role, {
       model: this.config().get<string>(run.provider === 'codex' ? 'agents.codexModel' : 'agents.model', ''),
@@ -924,7 +981,7 @@ export class AgentManager implements vscode.Disposable {
 
   async runPlanner(p: Project, change: string, next?: NextJson, planId?: string): Promise<AgentRun | undefined> {
     let split = this.split(p, change);
-    if (!split && splitterOff(this.sessionConfig())) split = await this.writeSplit(p, change, next ?? (await this.manager.json<NextJson>(p, ['change', 'next', change])));
+    if (!split && splitterOff(this.sessionConfig(p, change))) split = await this.writeSplit(p, change, next ?? (await this.manager.json<NextJson>(p, ['change', 'next', change])));
     if (!split) return this.runSplitter(p, change, next);
     const entry = planId ? split.find(pl => pl.id === planId) : split.find(pl => !p.change(change)?.plans.some(existing => existing.plan === pl.id));
     if (!entry || this.isBusy(p, change, entry.id, 'planner')) return;
@@ -1105,7 +1162,7 @@ export class AgentManager implements vscode.Disposable {
           // One writer per node, on its documents that aren't already written or waiting for approval;
           // one for the nodes whose writers share a session in this round.
           const round = this.sessions.round(p, change);
-          const config = this.sessionConfig();
+          const config = this.sessionConfig(p, change);
           const writers = new Map<string, { nodes: string[]; docs: string[] }>();
           for (const w of next.write) {
             const node = nodeKey(w.node);
@@ -1122,7 +1179,7 @@ export class AgentManager implements vscode.Disposable {
           if (next.triage && !this.isBusy(p, change, 'batch')) jobs.push(this.runTriage(p, change, next));
         } else if (next.plan) {
           let split = this.split(p, change);
-          if (!split && splitterOff(this.sessionConfig())) split = await this.writeSplit(p, change, next);
+          if (!split && splitterOff(this.sessionConfig(p, change))) split = await this.writeSplit(p, change, next);
           if (!split) jobs.push(this.runSplitter(p, change, next));
           else for (const pl of split) if (!p.change(change)?.plans.some(x => x.plan === pl.id)) jobs.push(this.runPlanner(p, change, next, pl.id));
         } else if (next.plan_errors.length) {

@@ -639,6 +639,16 @@ export function registerCommands(ctx: vscode.ExtensionContext, s: Services): voi
     if (c) agents.stopChange(c.p, c.name);
   });
 
+  reg('uspec.agents.chooseSessions', async (arg?: any) => {
+    const c = await changeRef(arg);
+    if (c) await agents.chooseMode(c.p, c.name);
+  });
+
+  reg('uspec.agents.newContext', async (arg?: any) => {
+    const c = await changeRef(arg);
+    if (c) agents.newContext(c.p, c.name);
+  });
+
   reg('uspec.agents.runTriage', async (arg?: any) => {
     const c = await changeRef(arg);
     if (c) await agents.runTriage(c.p, c.name);

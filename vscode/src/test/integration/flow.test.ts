@@ -632,15 +632,17 @@ describe('uspec extension', () => {
   it('runs a whole change in the explore session with `simple`', async function () {
     this.timeout(120_000);
     const c = 'simple-window';
-    const config = vscode.workspace.getConfiguration('uspec');
     const warnings = answerWarnings();
     const from = calls().length;
     resetDocs();
     try {
-      await config.update('agents.sessions', 'simple', vscode.ConfigurationTarget.Workspace);
       await api.manager.mutate(p, ['change', 'new', c]);
       fs.writeFileSync(file(`.uspec/changes/${c}/change.md`), '# Refund window: 30 days\n\n## What changes\n\nA refund can be requested up to 30 days after delivery.\n');
       await api.manager.load(p);
+      // The mode chosen for the change, as Process change.md chooses it.
+      assert.strictEqual(api.agents.mode(p, c), 'isolated');
+      api.agents.setMode(p, c, 'simple');
+      assert.strictEqual(api.agents.mode(p, c), 'simple');
 
       // Continue with Agent opens the user's session; its hooks give the change its explore session.
       await vscode.commands.executeCommand('uspec.claude.continueChange', { p, name: c });
@@ -685,7 +687,6 @@ describe('uspec extension', () => {
       assert.ok(runs.every((r) => r.session?.name === 'explore' && r.session.how === 'resumed'));
     } finally {
       warnings.restore();
-      await config.update('agents.sessions', undefined, vscode.ConfigurationTarget.Workspace);
       await discard(c);
       resetDocs();
     }
@@ -701,7 +702,8 @@ describe('uspec extension', () => {
     const ready = ['system/services/orders/api.md', 'system/services/payments/compliance.md'];
     resetDocs();
     try {
-      await config.update('agents.sessions', 'complex', vscode.ConfigurationTarget.Workspace);
+      // The default mode, for a change that chose none.
+      await config.update('agents.sessionMode', 'complex', vscode.ConfigurationTarget.Workspace);
       await api.manager.mutate(p, ['change', 'new', c]);
       fs.writeFileSync(file(`.uspec/changes/${c}/change.md`), '# Refund window: 30 days\n\n## What changes\n\nA refund can be requested up to 30 days after delivery.\n');
       fs.writeFileSync(rules, fs.readFileSync(rules, 'utf8').replace('14 days', '30 days'));
@@ -773,13 +775,13 @@ describe('uspec extension', () => {
       assert.ok(!warnings.shown.some((m) => /still open in its terminal/.test(m)), 'no automated job asks');
     } finally {
       warnings.restore();
-      await config.update('agents.sessions', undefined, vscode.ConfigurationTarget.Workspace);
+      await config.update('agents.sessionMode', undefined, vscode.ConfigurationTarget.Workspace);
       await discard(c);
       resetDocs();
     }
   });
 
-  it('runs every job in a new session while the sessions setting has a problem', async function () {
+  it('runs every job in a new session while the change’s mode has a problem', async function () {
     this.timeout(60_000);
     const c = 'invalid-sessions';
     const config = vscode.workspace.getConfiguration('uspec');
@@ -788,11 +790,12 @@ describe('uspec extension', () => {
     const key = 'system/services/payments/compliance.md';
     resetDocs();
     try {
-      await config.update('agents.sessions', { triage: 't-{plan}', writer: 'explore' }, vscode.ConfigurationTarget.Workspace);
-      await waitFor('the warning', () => warnings.shown.includes('uspec.agents.sessions: `{plan}` can\'t be used by triage. Agents run in new sessions until this is fixed.'));
+      await config.update('agents.sessions', { broken: { triage: 't-{plan}', writer: 'explore' } }, vscode.ConfigurationTarget.Workspace);
+      await waitFor('the warning', () => warnings.shown.includes('uspec.agents.sessions: broken: `{plan}` can\'t be used by triage. Its jobs run in new sessions until this is fixed.'));
       await api.manager.mutate(p, ['change', 'new', c]);
       await api.manager.mutate(p, ['change', 'set', c, key, 'affected', '--reason', 'Invalid sessions test']);
       await api.manager.load(p);
+      api.agents.setMode(p, c, 'broken');
       const run = (await api.agents.runWriter(p, c, 'system/services/payments', [key]))!;
       assert.strictEqual(run.session, undefined);
       assert.match(run.log.join('\n'), /^session: new$/m);
@@ -801,6 +804,40 @@ describe('uspec extension', () => {
     } finally {
       warnings.restore();
       await config.update('agents.sessions', undefined, vscode.ConfigurationTarget.Workspace);
+      await discard(c);
+      resetDocs();
+    }
+  });
+
+  it('starts the next jobs in new sessions after New context', async function () {
+    this.timeout(60_000);
+    const c = 'new-context';
+    const from = calls().length;
+    const [payments, orders] = ['system/services/payments/compliance.md', 'system/services/orders/api.md'];
+    resetDocs();
+    try {
+      await api.manager.mutate(p, ['change', 'new', c]);
+      for (const d of [payments, orders]) await api.manager.mutate(p, ['change', 'set', c, d, 'affected', '--reason', 'New context test']);
+      await api.manager.load(p);
+      api.agents.setMode(p, c, 'simple');
+      assert.ok(!api.agents.canStartNewContext(p, c), 'no context yet');
+      const first = (await api.agents.runWriter(p, c, 'system/services/payments', [payments]))!;
+      assert.deepStrictEqual(first.session, { name: 'explore', how: 'new' });
+      assert.ok(api.agents.canStartNewContext(p, c));
+
+      api.agents.newContext(p, c);
+      assert.ok(!api.agents.sessions.hasSessions(p, c));
+      assert.ok(!api.agents.canStartNewContext(p, c));
+      assert.strictEqual(api.agents.mode(p, c), 'simple', 'the mode stays');
+      const second = (await api.agents.runWriter(p, c, 'system/services/orders', [orders]))!;
+      assert.deepStrictEqual(second.session, { name: 'explore', how: 'new' });
+      const call = calls().slice(from).filter((x) => x.role === 'writer')[1];
+      assert.strictEqual(resumes(call), undefined);
+      assert.notStrictEqual(second.sessionId, first.sessionId);
+      // The new session is the change's explore session now; the first run keeps its own.
+      assert.strictEqual(api.agents.sessions.explore(p, c)?.id, second.sessionId);
+      assert.ok(first.sessionId);
+    } finally {
       await discard(c);
       resetDocs();
     }

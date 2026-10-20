@@ -233,6 +233,16 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "uspec.agents.chooseSessions",
+        "title": "Choose Agent Sessions…",
+        "category": "uspec"
+      },
+      {
+        "command": "uspec.agents.newContext",
+        "title": "Start New Agent Context",
+        "category": "uspec"
+      },
+      {
         "command": "uspec.agents.runImpact",
         "title": "Find Starting Documents",
         "category": "uspec",
@@ -530,6 +540,16 @@
           "command": "uspec.agents.stopChange",
           "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;.*;running/",
           "group": "1_agents@2"
+        },
+        {
+          "command": "uspec.agents.chooseSessions",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/",
+          "group": "1_agents@3"
+        },
+        {
+          "command": "uspec.agents.newContext",
+          "when": "view == uspec.specTree && viewItem =~ /^uspec\\.change;/ && !(viewItem =~ /;running/)",
+          "group": "1_agents@4"
         },
         {
           "command": "uspec.claude.continueChange",
@@ -837,35 +857,26 @@
           "description": "Claude Code model for triage runs in a session only triage uses. Empty uses the Claude Code default."
         },
         "uspec.agents.sessions": {
-          "anyOf": [
-            {
-              "type": "string",
-              "enum": [
-                "isolated",
-                "simple",
-                "complex"
-              ],
-              "enumDescriptions": [
-                "Every job in a new session.",
-                "Everything in the explore session, one plan: { \"impact\": \"explore\", \"triage\": \"explore\", \"writer\": \"explore\", \"splitter\": \"off\", \"planner\": \"explore\", \"implementer\": \"explore\" }.",
-                "One session per stage, one per plan: { \"impact\": \"explore\", \"triage\": \"spec\", \"writer\": \"spec\", \"splitter\": \"build\", \"planner\": \"plan-{plan} from build\", \"implementer\": \"plan-{plan}\" }."
-              ]
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "impact": { "type": "string" },
+              "triage": { "type": "string" },
+              "writer": { "type": "string" },
+              "splitter": { "type": "string" },
+              "planner": { "type": "string" },
+              "implementer": { "type": "string" }
             },
-            {
-              "type": "object",
-              "properties": {
-                "impact": { "type": "string" },
-                "triage": { "type": "string" },
-                "writer": { "type": "string" },
-                "splitter": { "type": "string" },
-                "planner": { "type": "string" },
-                "implementer": { "type": "string" }
-              },
-              "additionalProperties": false
-            }
-          ],
+            "additionalProperties": false
+          },
+          "default": {},
+          "markdownDescription": "Session modes to choose from for a change, on top of `isolated`, `simple` and `complex`: a map from mode name to a map from role to session name (a preset's name replaces it). Names can use `{round}` (triage, writer), `{node}` (writer) and `{plan}` (planner, implementer); `explore` is your own uspec-spec session of the change; `\"<name> from <session>\"` starts as a fork of an earlier stage's session; `\"splitter\": \"off\"` runs no splitter. Roles a mode leaves out get a new session per job."
+        },
+        "uspec.agents.sessionMode": {
+          "type": "string",
           "default": "isolated",
-          "markdownDescription": "Which jobs of a change share an agent session: `isolated`, `simple`, `complex`, or a map from role to session name. Names can use `{round}` (triage, writer), `{node}` (writer) and `{plan}` (planner, implementer); `explore` is your own uspec-spec session of the change; `\"<name> from <session>\"` starts as a fork of an earlier stage's session; `\"splitter\": \"off\"` runs no splitter. A map isn't merged with a preset: roles it leaves out get a new session per job."
+          "markdownDescription": "The session mode of a change until you choose one for it (Process change.md, or **Choose Agent Sessions…**): `isolated` (every job in a new session), `simple` (everything in the explore session, one plan), `complex` (one session per stage, one per plan), or a mode of `#uspec.agents.sessions#`."
         },
         "uspec.agents.maxParallel": {
           "type": "number",

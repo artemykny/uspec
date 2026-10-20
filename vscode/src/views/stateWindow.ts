@@ -6,6 +6,7 @@ import { inlineDiff, readSplit } from '../core/workflow';
 import { splitDoc } from '../core/paths';
 import { showNode } from '../core/paths';
 import { isTemplateLeft } from '../core/templates';
+import { describeMode } from '../core/sessions';
 import type { AgentManager, AgentRun, RunState } from '../agents';
 import { readText, STATE_LABEL, type ChangeData, type Project, type ProjectManager } from '../projects';
 import { summary } from './changesView';
@@ -185,11 +186,15 @@ export class StateWindows implements vscode.Disposable {
         const order: ChangeStage[] = [...STAGES, 'closable'];
         if (m.stage && order.indexOf(m.stage) >= 0 && order.indexOf(m.stage) <= order.indexOf(actual)) x.selected = m.stage;
       } else if (m.action === 'process' && c.next?.impact) {
+        // How the change goes on: the session mode of its jobs.
+        if (!(await this.agents.chooseMode(x.p, x.name))) return;
         const old = runs.find(r => r.role === 'impact' && r.state === 'needs-approval');
         if (old) await this.agents.reject(old);
         x.selected = undefined;
         void this.agents.runImpact(x.p, x.name);
-      } else if (m.action === 'openAgent' && run) void this.agents.openSession(run);
+      } else if (m.action === 'sessionMode') await this.agents.chooseMode(x.p, x.name);
+      else if (m.action === 'newContext') this.agents.newContext(x.p, x.name);
+      else if (m.action === 'openAgent' && run) void this.agents.openSession(run);
       else if (m.action === 'openProposal' && run?.proposal) await vscode.commands.executeCommand('vscode.open', x.p.uriOf(run.proposal));
       else if (m.action === 'reviewApprove' && run) {
         if (m.edits) await this.agents.saveReview(run, m.edits);
@@ -227,7 +232,10 @@ export class StateWindows implements vscode.Disposable {
     const nav = steps.map((st, i) => `<button class="step ${st === stage ? 'selected' : ''}" data-action="navigate" data-stage="${st}" ${i > current ? 'disabled' : ''} aria-current="${st === stage ? 'step' : 'false'}"><span class="step-number">${i < current ? '✓' : i + 1}</span>${esc(STAGE_LABEL[st])}</button>`).join('');
     const content = await this.current(p, c, stage, runs);
     const back = steps.indexOf(stage) > 0 ? `<button class="secondary" data-action="navigate" data-stage="${steps[steps.indexOf(stage) - 1]}">Go back</button>` : '';
-    return `<nav aria-label="Change steps">${nav}</nav><main><div class="section-title">${esc(STAGE_LABEL[stage])}</div>${content}<footer>${back}${this.agents.isRunning(p, c.name) ? button('stop', 'Stop agents') : ''}</footer></main>`;
+    const mode = this.agents.mode(p, c.name);
+    const sessions = `<button class="secondary" data-action="sessionMode" title="${esc(describeMode(this.agents.modes()[mode] ?? {}))}">Sessions: ${esc(mode)}</button>`;
+    const fresh = this.agents.canStartNewContext(p, c.name) ? `<button class="secondary" data-action="newContext" title="The next jobs start in new agent sessions instead of continuing the change's sessions">New context</button>` : '';
+    return `<nav aria-label="Change steps">${nav}</nav><main><div class="section-title">${esc(STAGE_LABEL[stage])}</div>${content}<footer>${back}${sessions}${fresh}${this.agents.isRunning(p, c.name) ? button('stop', 'Stop agents') : ''}</footer></main>`;
   }
 
   private async proposal(run: AgentRun): Promise<string> {
