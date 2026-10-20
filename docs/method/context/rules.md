@@ -8,14 +8,14 @@ An agent's **context** is the set of files and instructions it is given to do on
 
 - **Instructions**: the `instructions` of the node's type.
 - **Documents**: the documents it writes.
-- **Ancestors**: the documents of every ancestor of the node, from the root down.
+- **Parent**: all the documents of the node's parent, internal ones included. The root has no parent, so its context has no parent part.
 - **Upstream**: what the node's links name (see [links](../links/)): the exposed documents of a linked node, or the one document or [section](../spec-tree/) a link narrows to; and the documents of the same node, or sections of them, that any of these documents derives from (see [node types](../node-types/)).
 - **Templates**: each written document's template. Its `description` says what the document covers; its body is the structure the document follows.
 - **Change**: during a [change](../changes/), the change's description and the diffs, since the change's baseline, of the documents in the context above that the change updated.
 
 **Implementing a node.** The context of an agent implementing a node is:
 
-- **Instructions**, **ancestors** and **upstream** as for writing documents;
+- **Instructions**, **parent** and **upstream** as for writing documents;
 - **Documents**: all of the node's documents, internal ones included;
 - **Code**: the node's code paths;
 - **Change**: during a change, its description and the diffs of the updated documents among the files above.
@@ -26,7 +26,7 @@ Only a node with code paths can be implemented. An implementer works on a [plan]
 
 **Extra files.** A document's extra files are part of its context wherever the document is.
 
-**What is left out.** Siblings, other branches, downstream nodes, the internal documents of upstream nodes, and the parts of an upstream node or document a link doesn't name are not in the context. A node gets something outside its branch only by linking to it.
+**What is left out.** Grandparents and higher ancestors, siblings, other branches, downstream nodes, the internal documents of upstream nodes, and the parts of an upstream node or document a link doesn't name are not in the context. A node gets something beyond its parent, a higher ancestor included, only by linking to it.
 
 **Missing links.** The agent can read more than its context, but if it keeps needing something outside it, a link is missing: the fix is to add the link, not to widen the context. A node with code paths must be implementable from its context alone (see [spec tree](../spec-tree/)).
 
@@ -40,9 +40,9 @@ An agent writes `logic.md` of `system/services/payments` during the change `refu
 |---|---|
 | instructions | the Service type's `instructions` |
 | document | `system/services/payments/logic.md` |
-| ancestors | `overview.md`, `system/overview.md`, `system/services/overview.md` |
+| parent | `system/services/overview.md` |
 | upstream | `product/support/refunds/user-story.md`, `product/support/refunds/rules.md`, `system/services/payments/api.md` and its extra files |
 | template | the Service type's `logic.md` template |
 | change | `refund-window`'s description, and the diff of `product/support/refunds/rules.md` |
 
-It doesn't get `storage.md` of the same node, the screens that call the service, or any other service.
+It doesn't get `overview.md` or `system/overview.md`, which are higher ancestors, `storage.md` of the same node, the screens that call the service, or any other service.

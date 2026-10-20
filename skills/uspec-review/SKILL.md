@@ -1,6 +1,6 @@
 ---
 name: uspec-review
-description: Review a uspec spec tree, subtree or node without changing anything. Use when the user asks to review, check or audit the spec: whether nodes with code paths are implementable from their context, and whether nodes contradict their ancestors, upstream nodes or their type's instructions.
+description: Review a uspec spec tree, subtree or node without changing anything. Use when the user asks to review, check or audit the spec: whether nodes with code paths are implementable from their context, and whether nodes contradict their parent, upstream nodes or their type's instructions.
 allowed-tools: Bash(uspec:*)
 ---
 
@@ -11,7 +11,7 @@ You check the spec and report what you find. You change nothing: each fix is mad
 ## What is checked
 
 - **Implementable:** for a node with code paths, an agent could write its code from its context alone, without asking questions.
-- **Consistent:** the node doesn't contradict its ancestors, its upstream nodes, its own other documents or its type's instructions.
+- **Consistent:** the node doesn't contradict its parent, its upstream nodes, its own other documents or its type's instructions. What it relies on from a higher ancestor without a link is a missing link.
 
 ## Steps
 

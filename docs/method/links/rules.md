@@ -1,6 +1,6 @@
 # Links
 
-A node often depends on nodes outside its own branch: a service is built from the features it serves, a screen from the API of the service it calls. A **link** records such a dependency, from a node to a node it is derived from. The nodes a node links to are its **upstream**; the nodes that link to it are its **downstream**. Upstream nodes are the problem, the node is the solution: a service solves a set of features, and its API is the problem a screen solves. Links exist so that dependencies are explicit: a change reaches everything it affects and nothing else, and each agent reads what its node is built from.
+A node often depends on nodes outside its own branch: a service is built from the features it serves, a screen from the API of the service it calls. A node is built from its parent without a link; anything else it depends on, a higher ancestor included, needs one. A **link** records such a dependency, from a node to a node it is derived from. The nodes a node links to are its **upstream**; the nodes that link to it are its **downstream**. Upstream nodes are the problem, the node is the solution: a service solves a set of features, and its API is the problem a screen solves. Links exist so that dependencies are explicit: a change reaches everything it affects and nothing else, and each agent reads what its node is built from.
 
 ## Rules
 

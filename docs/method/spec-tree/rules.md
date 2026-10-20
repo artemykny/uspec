@@ -1,6 +1,6 @@
 # Spec tree
 
-A product is described as a **tree of nodes**. Each node is a directory that describes one part of the product in its documents, and splits into more detailed parts as its children. The tree exists so that each part of the product is written down in one place, and each agent reads only the part it works on. Every node has a [node type](../node-types/), and the project defines the types and how they nest; the method fixes no structure, and a small app gets by with far fewer types than a large one. The branches don't have to mirror each other: one feature can touch several services and appear on several screens. What a node depends on outside its own branch is recorded as [links](../links/).
+A product is described as a **tree of nodes**. Each node is a directory that describes one part of the product in its documents, and splits into more detailed parts as its children. The tree exists so that each part of the product is written down in one place, and each agent reads only the part it works on. Every node has a [node type](../node-types/), and the project defines the types and how they nest; the method fixes no structure, and a small app gets by with far fewer types than a large one. The branches don't have to mirror each other: one feature can touch several services and appear on several screens. A node is built from its parent; anything else it depends on, a higher ancestor included, is recorded as [links](../links/).
 
 ## Rules
 

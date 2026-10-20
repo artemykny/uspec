@@ -8,7 +8,7 @@ When the user asks to review, check or audit the spec: the whole tree, a subtree
 
 - **Read-only.** It changes nothing. Each fix is made later as a change with [`uspec-spec`](../uspec-spec/behaviour.md).
 - **Implementable:** for a node with code paths, an agent could write its code from its [context](../../method/context/rules.md) alone, without asking questions. Nodes without code paths are only checked for consistency.
-- **Consistent:** the node doesn't contradict its ancestors, its upstream nodes, its own other documents or its type's instructions.
+- **Consistent:** the node doesn't contradict its parent, its upstream nodes, its own other documents or its type's instructions. What it relies on from a higher ancestor without a link is a missing link.
 - **Real problems only.** A finding points to text in the spec. Style and wording aren't reviewed.
 
 ## Steps

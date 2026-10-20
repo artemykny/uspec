@@ -32,7 +32,7 @@ An **agent** is one run of a model doing one job of a [change](../changes/). The
 
 **Shared sessions.** A run in a session that already did a job doesn't rely on what earlier runs read: the user or other runs may have changed those files since, so it re-reads anything before relying on it. Its permissions, input and result are its own job's, never those of an earlier run in the session.
 
-**Nothing travels upstream.** A writer that can't make a document consistent without changing an ancestor, a linked node or a document it derives from doesn't edit that document, and reports which document needs to change and why; an implementer that can't write the code from the spec reports the gap. The orchestrator stops, and the user resolves it with the main agent; the upstream document changes only as part of the change, and propagation then reaches the document again.
+**Nothing travels upstream.** A writer that can't make a document consistent without changing its parent, a linked node or a document it derives from doesn't edit that document, and reports which document needs to change and why; an implementer that can't write the code from the spec reports the gap. The orchestrator stops, and the user resolves it with the main agent; the upstream document changes only as part of the change, and propagation then reaches the document again.
 
 **Parallel runs.** Ready items in different nodes (see [changes](../changes/)), and ready plans, are given to separate runs at the same time. Runs in the same session wait for each other: a session does one job at a time.
 

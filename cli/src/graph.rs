@@ -47,10 +47,11 @@ impl<'a> Graph<'a> {
                 push(doc_key(&node_path, d), via);
             }
         }
-        // The node's descendants.
-        for m in self.tree.descendants(&node_path) {
+        // The node's children; a grandchild is reached only through a child's update.
+        for c in &node.children {
+            let Some(m) = self.tree.get(c) else { continue };
             for d in &m.docs {
-                push(doc_key(&m.path, d), format!("descendant of {}", show_node(&node_path)));
+                push(doc_key(&m.path, d), format!("child of {}", show_node(&node_path)));
             }
         }
         // Every document of the nodes that link to it: to the node if the document is exposed, to the
@@ -92,9 +93,9 @@ impl<'a> Graph<'a> {
                 }
             }
         }
-        // Every document of the node's ancestors.
-        for a in self.tree.ancestors(&node_path) {
-            out.extend(a.docs.iter().map(|d| doc_key(&a.path, d)));
+        // Every document of the node's parent.
+        if let Some(p) = node.parent.as_deref().and_then(|p| self.tree.get(p)) {
+            out.extend(p.docs.iter().map(|d| doc_key(&p.path, d)));
         }
         // The exposed documents of the nodes it links to: all of them for a node link, else the one
         // document or section linked to.
@@ -172,5 +173,20 @@ mod tests {
         assert!(g
             .upstream("experience/ops-console/refunds/states.md")
             .contains(&"product/support/refunds/rules.md#refund-window".to_string()));
+    }
+
+    #[test]
+    fn the_tree_reaches_one_level() {
+        let project = Project::open(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/example_product")).unwrap();
+        let types = types::load(&project);
+        let tree = tree::load(&project, &types).unwrap();
+        let g = Graph::new(&tree, &types);
+        let direct = g.direct("system/overview.md");
+        assert!(direct.contains(&("system/services/overview.md".to_string(), "child of system".to_string())));
+        assert!(!direct.iter().any(|(d, _)| d.starts_with("system/services/payments/")), "a grandchild isn't reached directly");
+        let up = g.upstream("system/services/payments/logic.md");
+        assert!(up.contains(&"system/services/overview.md".to_string()));
+        assert!(!up.contains(&"system/overview.md".to_string()));
+        assert!(!up.contains(&"overview.md".to_string()));
     }
 }

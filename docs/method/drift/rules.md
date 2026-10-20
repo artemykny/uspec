@@ -6,7 +6,7 @@
 
 **What is recorded.** For each item, what it was last checked against:
 
-- **Documents.** For each document, its **upstream units**: every unit whose update reaches it directly under the propagation rules of [changes](../changes/), that is, a document of its node it derives from, or a section of it; every document of its ancestors; every exposed document of a node it links to; and a document or section it links to. For each unit, a hash of its content when the document was last checked.
+- **Documents.** For each document, its **upstream units**: every unit whose update reaches it directly under the propagation rules of [changes](../changes/), that is, a document of its node it derives from, or a section of it; every document of its parent; every exposed document of a node it links to; and a document or section it links to. For each unit, a hash of its content when the document was last checked.
 - **Nodes with code.** For each node whose type has code and that has code paths, a hash of its **spec** (its `node.yaml`, its documents and its extra files) and a hash of its **code** (the files under its code paths that git tracks, or that are untracked but not ignored), when its code was last verified against its spec.
 
 Hashes are of exact content: any edit, whitespace included, counts. A section's hash covers the section's text only, so an edit elsewhere in its document doesn't change it. Code is hashed as it is in the working tree, so uncommitted changes count.
@@ -18,7 +18,6 @@ documents:
   cli/drift/usage.md:
     cli/overview.md: 4be2f0a91c3d7e18
     method/drift/rules.md: 9c41e0a27d5b3f60
-    overview.md: 70d3a6e1b49c2f08
 nodes:
   cli/drift: {spec: 1b77d3c08e2a4f95, code: 4e0a9f12c6b8d371}
 ```
@@ -30,7 +29,7 @@ nodes:
 
 **Kinds of drift.**
 
-- **Dependency drift.** A document drifts when one of its upstream units differs from its record: the unit changed, was added (a new unit now reaches it, such as a new exposed document of a linked node) or was removed. Each such unit is a reason.
+- **Dependency drift.** A document drifts when one of its upstream units differs from its record: the unit changed, was added (a new unit now reaches it, such as a new exposed document of a linked node) or was removed. Each such unit is a reason. A record against a document of a higher ancestor, not the parent, isn't an upstream unit: it is ignored and not reported as drift, and the document's next check drops it.
 - **Code drift.** A node drifts when its code hash differs from its record. Reverting the code to the verified content clears it.
 - **Spec drift.** A node drifts when its spec hash differs from its record: its spec changed and its code was never verified against it.
 

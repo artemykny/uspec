@@ -112,11 +112,13 @@ fn build(
         None => None,
     };
 
-    let ancestors: Vec<File> = tree
-        .ancestors(&path)
-        .into_iter()
-        .flat_map(|a| doc_files(project, a, &a.docs.iter().collect::<Vec<_>>()))
-        .collect();
+    // Every document of the parent, internal ones included; the root has none.
+    let parent: Vec<File> = node
+        .parent
+        .as_deref()
+        .and_then(|p| tree.get(p))
+        .map(|p| doc_files(project, p, &p.docs.iter().collect::<Vec<_>>()))
+        .unwrap_or_default();
     // What the links name: the exposed documents of a linked node, or one document or section of it.
     let mut needs = Needs::default();
     for link in &node.deps {
@@ -156,14 +158,14 @@ fn build(
                 }
             }
             sections.push(Section { name: "document", files: doc_files(project, node, &targets.iter().collect::<Vec<_>>()) });
-            sections.push(Section { name: "ancestors", files: ancestors });
+            sections.push(Section { name: "parent", files: parent });
             sections.push(Section { name: "upstream", files: needs.files(project, tree) });
         }
         (false, true) => {
             if !t.code {
                 bail!("{} has no code paths: its type `{type_id}` doesn't have code: true", show_node(&path));
             }
-            sections.push(Section { name: "ancestors", files: ancestors });
+            sections.push(Section { name: "parent", files: parent });
             sections.push(Section { name: "upstream", files: needs.files(project, tree) });
             sections.push(Section { name: "documents", files: doc_files(project, node, &node.docs.iter().collect::<Vec<_>>()) });
         }
@@ -294,7 +296,18 @@ mod tests {
         assert!(up.contains(&format!("{P}/api-extra/")));
         assert_eq!(paths(&ctx, "template"), vec![".uspec/node-types/service/logic.md".to_string()]);
         let names: Vec<&str> = ctx.sections.iter().map(|s| s.name).collect();
-        assert_eq!(names, vec!["document", "ancestors", "upstream", "template"]);
+        assert_eq!(names, vec!["document", "parent", "upstream", "template"]);
+        // Only the direct parent: no grandparent, no root.
+        assert_eq!(paths(&ctx, "parent"), vec!["docs/system/services/overview.md".to_string()]);
+    }
+
+    #[test]
+    fn the_root_has_no_parent() {
+        let project = Project::open(&example()).unwrap();
+        let types = types::load(&project);
+        let tree = tree::load(&project, &types).unwrap();
+        let ctx = build(&project, &types, &tree, ".", &ids(&["overview"]), false, None).unwrap();
+        assert!(paths(&ctx, "parent").is_empty());
     }
 
     #[test]
@@ -318,7 +331,7 @@ mod tests {
         let ctx = build_at(&example(), &[], true, None).unwrap();
         assert!(ctx.documents.is_empty());
         let names: Vec<&str> = ctx.sections.iter().map(|s| s.name).collect();
-        assert_eq!(names, vec!["ancestors", "upstream", "documents", "code"]);
+        assert_eq!(names, vec!["parent", "upstream", "documents", "code"]);
     }
 
     #[test]
@@ -353,7 +366,7 @@ mod tests {
         fs::write(
             dir.join("status.yaml"),
             format!(
-                "baseline: \"0123456789abcdef\"\ncreated: 0\ndocuments:\n  {NODE}/api.md: {{state: updated}}\n  {NODE}/logic.md: {{state: updated}}\n  {NODE}/storage.md: {{state: updated}}\n"
+                "baseline: \"0123456789abcdef\"\ncreated: 0\ndocuments:\n  system/overview.md: {{state: updated}}\n  system/services/overview.md: {{state: updated}}\n  {NODE}/api.md: {{state: updated}}\n  {NODE}/logic.md: {{state: updated}}\n  {NODE}/storage.md: {{state: updated}}\n"
             ),
         )
         .unwrap();
@@ -364,6 +377,8 @@ mod tests {
             notes(&ctx, "change"),
             vec![
                 (".uspec/changes/c/change.md".to_string(), None),
+                // The parent's diff is listed, the grandparent's isn't.
+                ("docs/system/services/overview.md".to_string(), Some("diff since 0123456".to_string())),
                 (format!("{P}/api.md"), Some("diff since 0123456".to_string())),
             ]
         );

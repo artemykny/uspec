@@ -272,6 +272,37 @@ struct Drift {
 /// Finds every item not in an open change that changed since it was last checked.
 pub fn cmd_drift(project: &Project, types: &Types, tree: &Tree, out: &Out) -> Result<()> {
     let checks = Checks::load(project)?;
+    let drift = find(project, types, tree, &checks);
+    if out.json {
+        let v: Vec<Value> = drift
+            .iter()
+            .map(|d| {
+                json!({
+                    "kind": d.kind,
+                    "node": d.node,
+                    "document": d.document,
+                    "path": d.document.as_deref().map(|k| project.spec_file(k)),
+                    "unit": d.unit,
+                    "reason": d.reason,
+                })
+            })
+            .collect();
+        out.print(json!({ "drift": v }))?;
+    } else if drift.is_empty() {
+        println!("No drift: everything matches what it was last checked against.");
+    } else {
+        for d in &drift {
+            println!("{}: {}", d.document.as_deref().unwrap_or(&d.node), d.reason);
+        }
+    }
+    if !drift.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Every reason an item not in an open change drifts from its record, in tree order.
+fn find(project: &Project, types: &Types, tree: &Tree, checks: &Checks) -> Vec<Drift> {
     let mut skip_docs: HashSet<String> = HashSet::new();
     let mut skip_nodes: HashSet<String> = HashSet::new();
     if let Ok(rd) = fs::read_dir(project.changes_dir()) {
@@ -321,7 +352,14 @@ pub fn cmd_drift(project: &Project, types: &Types, tree: &Tree, out: &Out) -> Re
                     continue;
                 };
                 let now = hashes.doc_record(&key);
-                let units: BTreeSet<&String> = rec.keys().chain(now.keys()).collect();
+                // A record against a document of a higher ancestor, above the parent, is ignored.
+                let ancestors = tree.ancestors(&split_doc(&key).0);
+                let above_parent = &ancestors[..ancestors.len().saturating_sub(1)];
+                let ignored = |u: &str| {
+                    let unit_doc = u.split_once('#').map_or(u, |(d, _)| d);
+                    above_parent.iter().any(|a| a.path == split_doc(unit_doc).0)
+                };
+                let units: BTreeSet<&String> = rec.keys().filter(|u| !ignored(u)).chain(now.keys()).collect();
                 for u in units {
                     let what = match (rec.get(u), now.get(u)) {
                         (Some(a), Some(b)) if a != b => "changed",
@@ -334,32 +372,7 @@ pub fn cmd_drift(project: &Project, types: &Types, tree: &Tree, out: &Out) -> Re
             }
         }
     }
-    if out.json {
-        let v: Vec<Value> = drift
-            .iter()
-            .map(|d| {
-                json!({
-                    "kind": d.kind,
-                    "node": d.node,
-                    "document": d.document,
-                    "path": d.document.as_deref().map(|k| project.spec_file(k)),
-                    "unit": d.unit,
-                    "reason": d.reason,
-                })
-            })
-            .collect();
-        out.print(json!({ "drift": v }))?;
-    } else if drift.is_empty() {
-        println!("No drift: everything matches what it was last checked against.");
-    } else {
-        for d in &drift {
-            println!("{}: {}", d.document.as_deref().unwrap_or(&d.node), d.reason);
-        }
-    }
-    if !drift.is_empty() {
-        std::process::exit(1);
-    }
-    Ok(())
+    drift
 }
 
 /// Records the given documents (by key) and nodes (by path, "" for the root) as checked, as they are
@@ -476,6 +489,58 @@ mod tests {
              nodes:\n  .: {spec: 0123456789abcdef, code: \"1e10000000000000\"}\n  cli/drift: {spec: af63dc4c8601ec8c, code: \"9999999999999999\"}\n"
         );
         assert_eq!(Checks::default().to_yaml(), "documents: {}\nnodes: {}\n");
+    }
+
+    fn copy_dir(from: &Path, to: &Path) {
+        fs::create_dir_all(to).unwrap();
+        for e in fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let dst = to.join(e.file_name());
+            if e.path().is_dir() {
+                copy_dir(&e.path(), &dst);
+            } else {
+                fs::copy(e.path(), dst).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn records_against_higher_ancestors_are_ignored() {
+        let root = std::env::temp_dir().join(format!("uspec-drift-unit-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/example_product"), &root);
+        let _ = fs::remove_dir_all(root.join(".uspec/changes"));
+        let project = Project::open(&root).unwrap();
+        let types = crate::types::load(&project);
+        let tree = crate::tree::load(&project, &types).unwrap();
+        const KEY: &str = "system/services/payments/logic.md";
+        let reasons = |checks: &Checks| -> Vec<String> {
+            find(&project, &types, &tree, checks).into_iter().filter(|d| d.document.as_deref() == Some(KEY)).map(|d| d.reason).collect()
+        };
+
+        record(&project, &types, &tree, &[KEY.to_string()], &[]).unwrap();
+        let mut checks = Checks::load(&project).unwrap();
+        let units: Vec<&String> = checks.documents[KEY].keys().collect();
+        assert!(units.contains(&&"system/services/overview.md".to_string()));
+        assert!(!units.iter().any(|u| *u == "overview.md" || *u == "system/overview.md"));
+
+        // An older record also holds the grandparent and the root, which have changed since.
+        let rec = checks.documents.get_mut(KEY).unwrap();
+        rec.insert("overview.md".into(), "0000000000000000".into());
+        rec.insert("system/overview.md".into(), "0000000000000000".into());
+        checks.save(&root).unwrap();
+        assert_eq!(reasons(&checks), Vec::<String>::new());
+
+        // The parent still counts.
+        checks.documents.get_mut(KEY).unwrap().insert("system/services/overview.md".into(), "0000000000000000".into());
+        assert_eq!(reasons(&checks), vec!["system/services/overview.md changed since it was last checked".to_string()]);
+
+        // Accepting rewrites the record without the higher ancestors.
+        record(&project, &types, &tree, &[KEY.to_string()], &[]).unwrap();
+        let after = Checks::load(&project).unwrap();
+        let _ = fs::remove_dir_all(&root);
+        assert!(!after.documents[KEY].contains_key("overview.md"));
+        assert!(!after.documents[KEY].contains_key("system/overview.md"));
     }
 
     #[test]

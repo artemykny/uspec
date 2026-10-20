@@ -372,10 +372,19 @@ pub fn compute_next(project: &Project, change: &Change, tree: &Tree, types: &Typ
     let docs = &change.status.documents;
     let unsettled: Vec<&String> = docs.iter().filter(|(_, d)| !d.state.settled()).map(|(k, _)| k).collect();
     let reach: HashMap<&String, HashSet<String>> = unsettled.iter().map(|k| (*k, g.reach(k))).collect();
+    // Down the tree, a document waits only for its parent: not for a document of a higher ancestor.
+    let higher_ancestor = |u: &str, key: &str| {
+        let ancestors = tree.ancestors(&split_doc(key).0);
+        let above_parent = &ancestors[..ancestors.len().saturating_sub(1)];
+        above_parent.iter().any(|a| a.path == split_doc(u).0)
+    };
     // A document is ready when no unsettled document can still reach it.
     let ready = |key: &String| {
         !unsettled.iter().any(|u| {
-            *u != key && reach[u].contains(key) && !reach.get(key).is_some_and(|r| r.contains(*u))
+            *u != key
+                && reach[u].contains(key)
+                && !reach.get(key).is_some_and(|r| r.contains(*u))
+                && !higher_ancestor(u, key)
         })
     };
     let batch: Vec<(String, Vec<String>)> = docs
@@ -676,4 +685,59 @@ pub fn cmd_close(project: &Project, types: &Types, tree: &Tree, name: &str, out:
     );
     println!("removed {}/", project.rel(&c.dir));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::{tree, types};
+
+    fn copy_dir(from: &Path, to: &Path) {
+        fs::create_dir_all(to).unwrap();
+        for e in fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let dst = to.join(e.file_name());
+            if e.path().is_dir() {
+                copy_dir(&e.path(), &dst);
+            } else {
+                fs::copy(e.path(), dst).unwrap();
+            }
+        }
+    }
+
+    /// The pending documents `next` lists in its triage batch, for a change with these documents.
+    fn batch(root: &Path, documents: &str) -> Vec<String> {
+        let dir = root.join(".uspec/changes/c");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("change.md"), "# c\n").unwrap();
+        fs::write(dir.join("status.yaml"), format!("baseline: \"0123456789abcdef\"\ncreated: 0\ndocuments:\n{documents}")).unwrap();
+        let project = Project::open(root).unwrap();
+        let types = types::load(&project);
+        let tree = tree::load(&project, &types).unwrap();
+        let change = Change::load(&project, "c").unwrap();
+        compute_next(&project, &change, &tree, &types).batch.into_iter().map(|(k, _)| k).collect()
+    }
+
+    #[test]
+    fn a_document_waits_only_for_its_parent() {
+        let root = std::env::temp_dir().join(format!("uspec-change-unit-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/example_product"), &root);
+        let _ = fs::remove_dir_all(root.join(".uspec/changes"));
+        const API: &str = "system/services/payments/api.md";
+        // A pending grandparent document doesn't hold back the grandchild.
+        let higher = batch(
+            &root,
+            &format!("  system/overview.md: {{state: pending}}\n  system/services/overview.md: {{state: no-change, reason: r}}\n  {API}: {{state: pending}}\n"),
+        );
+        // A pending parent document does.
+        let parent = batch(&root, &format!("  system/services/overview.md: {{state: pending}}\n  {API}: {{state: pending}}\n"));
+        let _ = fs::remove_dir_all(&root);
+        assert!(higher.contains(&API.to_string()), "{higher:?}");
+        assert!(higher.contains(&"system/overview.md".to_string()));
+        assert!(!parent.contains(&API.to_string()), "{parent:?}");
+        assert!(parent.contains(&"system/services/overview.md".to_string()));
+    }
 }

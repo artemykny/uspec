@@ -14,7 +14,7 @@ Each hash is 16 hexadecimal digits over exact content, whitespace included. A do
 - a node's **spec** is its `node.yaml`, its documents and their `-extra/` folders;
 - a node's **code** is the files under its code paths that git tracks or that are untracked but not ignored, as they are in the working tree, so uncommitted changes count.
 
-A document's **upstream units** are the units whose update reaches it directly under the [propagation rules](../../method/changes/): a document of its node it derives from, or a section of it; every document of its ancestors; every exposed document of a node it links to; a document or section it links to. A unit is named by its spec-relative path, with `#<section>` for a section.
+A document's **upstream units** are the units whose update reaches it directly under the [propagation rules](../../method/changes/): a document of its node it derives from, or a section of it; every document of its parent; every exposed document of a node it links to; a document or section it links to. A unit is named by its spec-relative path, with `#<section>` for a section.
 
 ### drift
 
@@ -24,6 +24,8 @@ A document's **upstream units** are the units whose update reaches it directly u
    - its hash differs: `<unit> changed since it was last checked`;
    - it reaches the document but has no record (such as a new exposed document of a linked node): `<unit> added since it was last checked`;
    - it is in the record but no longer reaches the document, or its section is gone: `<unit> removed since it was last checked`.
+
+   A record against a document of a higher ancestor, above the parent, is ignored: it isn't reported, and `accept` or a change's close drops it with the rest of the record.
 4. Checks each node with code paths not skipped. Without a record, it drifts with `never checked`. Otherwise:
    - its code hash differs from the record: `code changed since it was last verified`;
    - its spec hash differs from the record: `spec changed since its code was last verified`.

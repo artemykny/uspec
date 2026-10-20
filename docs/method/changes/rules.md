@@ -65,7 +65,7 @@ A change kept from an [experiment](../experiments/) says so in `change.md`.
 **Propagation.** When a document becomes `updated`, every document it reaches is added as `pending`, with the rule that reached it:
 
 - the documents of the same node that [derive from](../node-types/) it;
-- the documents of the node's descendants;
+- the documents of the node's children; a grandchild is reached only if a child's document becomes `updated` in turn;
 - every document of the nodes that [link](../links/) to its node, if the document is exposed, or that link to the document itself.
 
 A dependency on a [section](../spec-tree/) reaches only when that section changed: its text differs from the baseline's, or it was added or removed. If its node has code paths, the node is added under `implementation`. `affected` and `no-change` propagate nothing: a document that doesn't change passes nothing on, so the change stops there. When an update reaches a document that is already settled, it goes back to `pending` and is triaged again against the new diff. Propagation repeats until no candidates are left.
@@ -74,7 +74,7 @@ A dependency on a [section](../spec-tree/) reaches only when that section change
 
 **Readiness.** Items are handled in dependency order, so the next step can be read from `status.yaml` alone.
 
-- A document is ready when no unsettled document can still reach it through propagation. A screen that links to a service waits for the service's exposed `api.md`, not for its internal `logic.md`. A dependency on a section counts as reaching, since the section may still change.
+- A document is ready when no unsettled document can still reach it through propagation. A screen that links to a service waits for the service's exposed `api.md`, not for its internal `logic.md`. A dependency on a section counts as reaching, since the section may still change. Down the tree, a document waits only for unsettled documents of its parent, not of higher ancestors.
 - A node's ready documents are written together. A document that derives from an unsettled document of its node still waits for it, so one node can get more than one writer in a change.
 - Ready items in different nodes are handled in parallel.
 

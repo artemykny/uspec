@@ -20,6 +20,7 @@ uspec is at the design stage: the method is written down, and first versions of 
 - [x] Skills list, first draft ([docs/skills/](docs/skills/overview.md))
 - [ ] Drift check: how code changed without a spec change is detected
 - [ ] Presets: where they are published on GitHub and how `uspec init` names one
+- [ ] Error flows in a change: what happens when an agent run fails, a CLI step errors or a change is left half-done, and how the change is retried, resumed or rolled back
 
 ## 2. CLI
 
